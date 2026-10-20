@@ -78,7 +78,21 @@ button { cursor: pointer; }
 
 [hidden] { display: none !important; }
 
-svg { width: 100%; height: 100%; }
+/* Icons fill their logo box. (This used to be a global "svg" rule, which
+   also stretched the hidden icon sheet over the whole page and blocked
+   clicks on the sidebar.) */
+.logo svg,
+.hero-icon svg,
+.small-logo svg { width: 100%; height: 100%; }
+
+/* The hidden sheet that stores the Scout logo: never visible, never clickable */
+.icon-sprite {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
 
 
 /* ==============================
@@ -145,6 +159,13 @@ svg { width: 100%; height: 100%; }
     margin-top: 2px;
 }
 
+/* "Security Message Adviser" under the name Scout */
+.brand p.brand-purpose {
+    color: var(--text-secondary);
+    font-size: 11.5px;
+    margin-top: 1px;
+}
+
 .icon-button {
     width: 30px;
     height: 30px;
@@ -205,6 +226,28 @@ svg { width: 100%; height: 100%; }
     margin-bottom: 8px;
 }
 
+/* HISTORY title with the small "Clear history" button beside it */
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 8px;
+}
+
+.section-header .section-title { margin-bottom: 0; }
+
+.text-button {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 6px;
+}
+
+.text-button:hover:not(:disabled) { color: var(--text); background: var(--surface-hover); }
+.text-button:disabled { opacity: 0; cursor: default; }
+
 
 /* HISTORY */
 
@@ -229,6 +272,13 @@ svg { width: 100%; height: 100%; }
     font-size: 13px;
     transition: 0.15s;
     animation: fadeUp 0.25s ease;
+}
+
+/* The analysis currently shown in the conversation */
+.history-item.active {
+    background: var(--surface-hover);
+    color: var(--text);
+    box-shadow: inset 2px 0 0 var(--text-muted);
 }
 
 .history-item:hover {
@@ -710,6 +760,13 @@ mark {
     line-height: 1.65;
 }
 
+/* Scout's short friendly lead-in under each section heading */
+.result-section p.section-lead {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+
 .result-list {
     padding-left: 18px;
     display: flex;
@@ -837,6 +894,13 @@ body.testing-mode .testing-details {
     margin-bottom: 4px;
 }
 
+.loading-title .small-logo {
+    width: 22px;
+    height: 22px;
+    padding: 3px;
+    flex-shrink: 0;
+}
+
 .typing-dots { display: inline-flex; gap: 4px; }
 
 .typing-dots span {
@@ -952,7 +1016,6 @@ body.testing-mode .testing-details {
 .send-button:hover:not(:disabled) { transform: translateY(-1px); }
 
 /* Dimmed while empty, but still clickable so the empty-message warning can show */
-.send-button.is-empty { opacity: 0.3; }
 
 .send-button:disabled { opacity: 0.25; cursor: default; }
 

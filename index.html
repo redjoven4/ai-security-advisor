@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sentinel | Security Message Adviser</title>
-  <meta name="description" content="A local, rule-based adviser that helps you decide what to do with a message, based only on the evidence you supply.">
+  <title>Scout | Security Message Adviser</title>
+  <meta name="description" content="Scout, a Security Message Adviser: helps you decide what to do with a message, based only on the evidence you supply.">
 
   <!-- Inter font (optional). Offline, the page falls back to the system font. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,11 +16,15 @@
 
 <body>
 
-<!-- Reusable shield icon (drawn locally, no icon library needed) -->
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <symbol id="shield" viewBox="0 0 24 24">
-    <path d="M12 2.5 4.5 5.3v6.2c0 4.6 3.1 8.6 7.5 10 4.4-1.4 7.5-5.4 7.5-10V5.3L12 2.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
-    <path d="m8.8 12.2 2.2 2.2 4.3-4.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<!-- SCOUT LOGO (original, drawn here; no image files or icon libraries).
+     A scanning ring that is open at the top-right, an inner "lens" ring,
+     and a small point where the scan has spotted something.
+     Uses currentColor, so it takes the colour of its container. -->
+<svg class="icon-sprite" aria-hidden="true" focusable="false">
+  <symbol id="scout-logo" viewBox="0 0 24 24">
+    <path d="M20.37 10.52A8.5 8.5 0 1 1 13.48 3.63" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+    <circle cx="12" cy="12" r="3.4" fill="none" stroke="currentColor" stroke-width="2.1"/>
+    <circle cx="18.01" cy="5.99" r="2.1" fill="currentColor"/>
   </symbol>
 </svg>
 
@@ -32,9 +36,10 @@
   <aside id="sidebar" class="sidebar" aria-label="Sidebar">
 
     <div class="brand">
-      <div class="logo" aria-hidden="true"><svg><use href="#shield"/></svg></div>
+      <div class="logo" aria-hidden="true"><svg><use href="#scout-logo"/></svg></div>
       <div class="brand-text">
-        <h1>Security Adviser</h1>
+        <h1>Scout</h1>
+        <p class="brand-purpose">Security Message Adviser</p>
         <p>Evidence first. Assumptions second.</p>
       </div>
       <button id="collapseSidebar" class="icon-button" aria-label="Collapse sidebar" title="Collapse sidebar">⟨</button>
@@ -46,7 +51,11 @@
     </button>
 
     <div class="sidebar-section">
-      <p class="section-title">HISTORY</p>
+      <div class="section-header">
+        <p class="section-title">HISTORY</p>
+        <!-- Deletes saved history (asks first). Clear conversation does NOT delete history. -->
+        <button id="clearHistory" class="text-button" disabled>Clear history</button>
+      </div>
       <!-- Filled by script.js from conversationHistory -->
       <div id="history" class="history"></div>
       <p id="historyEmpty" class="history-empty">No analyses yet.</p>
@@ -89,7 +98,7 @@
     <!-- Shown on phones, and on desktop when the sidebar is collapsed -->
     <header class="top-bar">
       <button id="openSidebar" class="icon-button menu-button" aria-label="Open sidebar" title="Open sidebar">☰</button>
-      <span class="top-bar-title">Security Adviser</span>
+      <span class="top-bar-title">Scout</span>
       <span class="mobile-version" data-version>V0</span>
     </header>
 
@@ -97,10 +106,10 @@
 
       <!-- WELCOME / EMPTY STATE -->
       <section id="welcome" class="welcome">
-        <div class="hero-icon" aria-hidden="true"><svg><use href="#shield"/></svg></div>
+        <div class="hero-icon" aria-hidden="true"><svg><use href="#scout-logo"/></svg></div>
 
         <h2>Analyse a suspicious message</h2>
-        <p>Paste a message and I'll evaluate what the supplied evidence actually supports.</p>
+        <p>I'm Scout. Paste a message and I'll help you work out what the evidence actually supports.</p>
 
         <!-- These only FILL the composer; the adviser still analyses normally -->
         <div class="suggestions">
@@ -161,7 +170,7 @@
             <button type="button" id="backgroundButton" class="background-button" aria-expanded="false" aria-controls="backgroundContainer">
               ＋ Add background
             </button>
-            <button type="submit" id="sendButton" class="send-button is-empty" aria-label="Analyse message" title="Analyse message (Enter)">↑</button>
+            <button type="submit" id="sendButton" class="send-button" disabled aria-label="Analyse message" title="Analyse message (Enter)">↑</button>
           </div>
         </div>
 

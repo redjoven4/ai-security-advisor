@@ -41,7 +41,7 @@ const DECISIONS = {
     icon: "🟢",
     tone: "green",
     meaning:
-      "Nothing in the information you provided currently justifies a security warning. This does not mean the message is definitely safe.",
+      "I don't see a reason to warn you based on what you've shown me. That doesn't prove the message is genuine — it just means there isn't enough evidence here to justify a warning.",
   },
   pause_verify: {
     code: "pause_verify",
@@ -49,7 +49,7 @@ const DECISIONS = {
     icon: "🟡",
     tone: "amber",
     meaning:
-      "There is enough uncertainty or potential risk that you should check something before doing what the message asks.",
+      "I'd check this before doing anything. The message asks for something that could matter, but what you've given me isn't enough to confirm the request.",
   },
   do_not_follow: {
     code: "do_not_follow",
@@ -57,7 +57,7 @@ const DECISIONS = {
     icon: "🔴",
     tone: "red",
     meaning:
-      "The message asks for something that would itself put you or your account at serious risk.",
+      "I wouldn't follow this request. It's asking for information or an action that could put you or your account at risk.",
   },
 };
 
@@ -920,6 +920,7 @@ const EXAMPLE_CASES = [
   { title: "K. Misspelt but ordinary", message: "hey chess club is moved to room 4 tomorow", background: "" },
   { title: "L. Polite code request", message: "Hello! Hope you're having a wonderful day 😊. Could you please send me your verification code?", background: "" },
   { title: "M. 'Staff' and account trade", message: "Hi, I'm a [game] moderator. We're upgrading accounts — give me your account login and I'll add free skins.", background: "I don't know this person." },
+  { title: "N. Payment request (bill)", message: "You have to pay 670 dollars for your data plan bill. Pay today using this link: [link omitted]", background: "I received this email today." },
 ];
 
 // Decision tone → CSS class on the result card (accent colour only).
@@ -945,11 +946,11 @@ function el(tag, className, text) {
   return node;
 }
 
-// The shield icon (uses the <symbol id="shield"> defined in index.html).
-function shieldIcon() {
+// Scout's logo (uses the <symbol id="scout-logo"> defined in index.html).
+function scoutLogo() {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
-  use.setAttribute("href", "#shield");
+  use.setAttribute("href", "#scout-logo");
   svg.setAttribute("aria-hidden", "true");
   svg.appendChild(use);
   return svg;
@@ -1027,12 +1028,12 @@ function renderResult(entry) {
   // Name row
   const name = el("div", "adviser-name");
   const logo = el("div", "small-logo");
-  logo.appendChild(shieldIcon());
-  name.append(logo, document.createTextNode("Security Adviser"), el("span", "bubble-meta-inline", `#${entry.number} · ${r.version}`));
+  logo.appendChild(scoutLogo());
+  name.append(logo, document.createTextNode("Scout"), el("span", "bubble-meta-inline", `#${entry.number} · ${r.version}`));
   wrapper.appendChild(name);
 
   const card = el("article", `result-card ${TONE_CLASS[d.tone]}`);
-  card.setAttribute("aria-label", `Adviser result ${entry.number}: ${d.label}`);
+  card.setAttribute("aria-label", `Scout's result ${entry.number}: ${d.label}`);
 
   // 1. DECISION — icon + text, colour is only an accent
   const header = el("div", "decision-header");
@@ -1048,6 +1049,7 @@ function renderResult(entry) {
 
   // 2. EVIDENCE
   const ev = renderSection("🔎", "Evidence");
+  ev.appendChild(el("p", "section-lead", "Here's what stands out:"));
   const evList = el("ul", "result-list");
   r.evidence.forEach((item) => {
     const li = el("li", null, item.text);
@@ -1063,18 +1065,20 @@ function renderResult(entry) {
 
   // 3. UNCERTAINTY (+ one question that could change the advice)
   const un = renderSection("❓", "Uncertainty");
+  un.appendChild(el("p", "section-lead", "What I can't tell from this:"));
   const unList = el("ul", "result-list");
   r.uncertainty.forEach((t) => unList.appendChild(el("li", null, t)));
   un.appendChild(unList);
   if (r.question) {
     const qBox = el("div", "question-box");
-    qBox.append(el("strong", null, "A question that could change this advice"), el("p", null, r.question));
+    qBox.append(el("strong", null, "A question that could change my advice"), el("p", null, r.question));
     un.appendChild(qBox);
   }
   content.appendChild(un);
 
   // 4. SAFE NEXT STEP
   const next = renderSection("🛡", "Safe next step");
+  next.appendChild(el("p", "section-lead", "What I'd do:"));
   const nextList = el("ul", "result-list steps-list");
   r.safeNextStep.forEach((t) => nextList.appendChild(el("li", null, t)));
   next.appendChild(nextList);
@@ -1095,11 +1099,17 @@ function renderResult(entry) {
     (values.length ? values : ["(none)"]).forEach((v) => line.appendChild(el("span", strong ? "rule-tag strong" : "rule-tag", v)));
     test.appendChild(line);
   };
+  // V1: how this answer was produced
+  const method = r.engine === "ai" ? (r.provider === "claude" ? "Claude API" : "Local AI (Ollama)") : "V0 rules (fallback)";
+  addTestLine("Version:", [ADVISER_VERSION]);
+  addTestLine("Method:", [method]);
+  addTestLine("Model:", [r.model || "none (rule-based)"]);
+  addTestLine("Prompt version:", [r.promptVersion || "none (rule-based)"]);
+  addTestLine("Response time:", [typeof r.responseMs === "number" ? `${(r.responseMs / 1000).toFixed(1)} s` : "instant"]);
   addTestLine("Triggered rules:", r.triggeredRules);
   addTestLine("Decision:", [r.decision], true);
   addTestLine("Decided by:", r.allReasons);
-  // V1: which engine answered, and what the V0 rules would have said
-  if (r.engine) addTestLine("Engine:", [r.engine === "ai" ? `ai (${r.model})` : r.engine]);
+  // What the unchanged V0 rules would have said, for comparison
   if (r.v0Comparison) addTestLine("V0 rules would decide:", [r.v0Comparison.decision, ...r.v0Comparison.reasons]);
   if (r.checks && r.checks.length) addTestLine("Checks:", r.checks);
   content.appendChild(test);
@@ -1116,8 +1126,8 @@ function renderErrorCard(errorText, onRetry, onUseV0) {
 
   const name = el("div", "adviser-name");
   const logo = el("div", "small-logo");
-  logo.appendChild(shieldIcon());
-  name.append(logo, document.createTextNode("Security Adviser"));
+  logo.appendChild(scoutLogo());
+  name.append(logo, document.createTextNode("Scout"));
   wrapper.appendChild(name);
 
   const card = el("article", "result-card error");
@@ -1128,7 +1138,7 @@ function renderErrorCard(errorText, onRetry, onUseV0) {
   const icon = el("span", "decision-icon", "⚪");
   icon.setAttribute("aria-hidden", "true");
   decision.append(icon, el("span", null, "No decision was made"));
-  header.append(decision, el("p", "decision-meaning", errorText));
+  header.append(decision, el("p", "decision-meaning", `I couldn't finish this one. ${errorText}`));
 
   const actions = el("div", "error-actions");
   const retry = el("button", "error-button", "↻ Retry");
@@ -1154,7 +1164,9 @@ function renderLoading() {
   const title = el("div", "loading-title");
   const dots = el("span", "typing-dots");
   dots.append(el("span"), el("span"), el("span"));
-  title.append(dots, document.createTextNode("Analysing message"));
+  const logo = el("span", "small-logo");
+  logo.appendChild(scoutLogo());
+  title.append(logo, document.createTextNode("Scout is reading your message"), dots);
   box.appendChild(title);
   const steps = LOADING_STEPS.map((text) => box.appendChild(el("div", "loading-step", text)));
   return { box, steps };
@@ -1165,6 +1177,7 @@ function renderHistoryItem(entry, onSelect) {
   const d = DECISIONS[entry.result.decision];
   const btn = el("button", "history-item");
   btn.type = "button";
+  btn.dataset.number = entry.number;
   btn.title = `${d.label}: ${entry.result.message}`;
   const icon = el("span", "history-item__icon", d.icon);
   icon.setAttribute("aria-hidden", "true");
@@ -1193,6 +1206,7 @@ function initUI() {
   const history = $("history");
   const historyEmpty = $("historyEmpty");
   const clearButton = $("clearConversation");
+  const clearHistoryButton = $("clearHistory");
   const testingToggle = $("testingMode");
   const examplesDialog = $("examplesDialog");
   const overlay = $("overlay");
@@ -1213,6 +1227,8 @@ function initUI() {
     .catch(() => {}); // no server (e.g. opened by double-click): keep the general wording
 
   let isAnalysing = false; // prevents accidental double submissions
+  let analysisCounter = 0; // numbers each analysis (#1, #2, ...) — never reused
+  let viewId = 0; // changes whenever the visible conversation is replaced
 
   /* --- Composer helpers --- */
 
@@ -1222,9 +1238,33 @@ function initUI() {
     box.style.height = box.scrollHeight + "px";
   }
 
-  // Dim the send button while the message box is empty
+  // The send button only works when there is a message and nothing is running
   function updateSendButton() {
-    sendButton.classList.toggle("is-empty", !messageInput.value.trim());
+    sendButton.disabled = isAnalysing || !messageInput.value.trim();
+  }
+
+  // Clear conversation only makes sense when something is on screen
+  function updateClearButton() {
+    clearButton.disabled = messages.children.length === 0;
+  }
+
+  // Empty the message box and the background field
+  function resetComposer() {
+    messageInput.value = "";
+    closeBackground();
+    errorBox.textContent = "";
+    autoResize(messageInput);
+    updateSendButton();
+  }
+
+  // Remove everything from the visible conversation and show the welcome screen.
+  // Saved history is NOT touched.
+  function clearVisibleConversation() {
+    viewId++;
+    messages.replaceChildren();
+    welcome.hidden = false;
+    setActiveHistory(null);
+    updateClearButton();
   }
 
   function openBackground() {
@@ -1340,7 +1380,8 @@ function initUI() {
     if (messageInput.value.trim()) errorBox.textContent = "";
   });
 
-  // Enter sends (Shift+Enter = new line). Ctrl/Cmd+Enter sends from either box.
+  // Enter, Ctrl+Enter or Cmd+Enter sends (Shift+Enter = new line).
+  // Ctrl/Cmd+Enter also sends from the background box.
   messageInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
@@ -1353,15 +1394,44 @@ function initUI() {
 
   /* --- History --- */
 
-  function scrollToAnalysis(entry) {
-    const target = document.getElementById(`analysis-${entry.number}`);
-    if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+  // Subtly highlight the history item that is currently shown
+  function setActiveHistory(number) {
+    history.querySelectorAll(".history-item").forEach((item) => {
+      const active = Number(item.dataset.number) === number;
+      item.classList.toggle("active", active);
+      if (active) item.setAttribute("aria-current", "true");
+      else item.removeAttribute("aria-current");
+    });
+  }
+
+  // Show one analysis on screen (used for new results and for history)
+  function displayEntry(entry) {
+    welcome.hidden = true;
+    const userRow = renderUserBubble(entry);
+    messages.append(userRow, renderResult(entry));
+    setActiveHistory(entry.number);
+    updateClearButton();
+    userRow.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  // Clicking a history item loads that analysis: message, background,
+  // decision, evidence, uncertainty, next step and testing details.
+  function openHistoryEntry(entry) {
+    clearVisibleConversation();
+    displayEntry(entry);
     closeDrawerOnPhone();
   }
 
-  function addToHistory(entry) {
+  // Save a finished analysis to history (memory for now, via storage.js)
+  function recordEntry(result) {
+    analysisCounter++;
+    const entry = { number: analysisCounter, timestamp: new Date(), result };
+    conversationHistory.push(entry);
+    HistoryStorage.save(entry);
     historyEmpty.hidden = true;
-    history.prepend(renderHistoryItem(entry, scrollToAnalysis)); // newest first
+    history.prepend(renderHistoryItem(entry, openHistoryEntry)); // newest first
+    clearHistoryButton.disabled = false;
+    return entry;
   }
 
   /* --- Analyse --- */
@@ -1385,8 +1455,9 @@ function initUI() {
   // Used by the Analyse button and by Retry.
   async function runAnalysis(message, background) {
     isAnalysing = true;
-    sendButton.disabled = true;
+    updateSendButton();
     welcome.hidden = true;
+    const startedInView = viewId;
 
     // Show the loading indicator and tick off each step
     const loading = renderLoading();
@@ -1404,6 +1475,15 @@ function initUI() {
       failure = error;
     }
     loading.box.remove();
+    isAnalysing = false;
+    updateSendButton();
+
+    // The user started a new analysis / opened history meanwhile:
+    // keep the result in history, but don't drop it into the new view.
+    if (startedInView !== viewId) {
+      if (result) recordEntry(result);
+      return;
+    }
 
     if (result) {
       showResult(result);
@@ -1423,58 +1503,47 @@ function initUI() {
         }
       );
       messages.appendChild(card);
+      updateClearButton();
       card.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-    isAnalysing = false;
-    sendButton.disabled = false;
   }
 
-  // Add a finished result to the conversation and history (same as V0).
+  // Add a finished result to history and to the visible conversation.
   function showResult(result) {
-    const entry = { number: conversationHistory.length + 1, timestamp: new Date(), result };
-    conversationHistory.push(entry);
-    HistoryStorage.save(entry);
-
-    const userRow = renderUserBubble(entry);
-    messages.append(userRow, renderResult(entry));
-    addToHistory(entry);
-    userRow.scrollIntoView({ behavior: "smooth", block: "start" });
-
-    // Reset the composer for the next message
-    messageInput.value = "";
-    closeBackground();
-    autoResize(messageInput);
-    updateSendButton();
-    clearButton.disabled = false;
+    displayEntry(recordEntry(result));
+    resetComposer(); // ready for the next message
     messageInput.focus();
   }
 
-  /* --- New analysis: empty the composer (history stays until cleared) --- */
+  /* --- New analysis: fresh screen + empty composer (history is kept) --- */
   $("newAnalysis").addEventListener("click", () => {
-    messageInput.value = "";
-    closeBackground();
-    errorBox.textContent = "";
-    autoResize(messageInput);
-    updateSendButton();
-    chat.scrollTop = chat.scrollHeight;
+    clearVisibleConversation();
+    resetComposer();
     closeDrawerOnPhone();
     messageInput.focus();
   });
 
-  /* --- Clear conversation --- */
+  /* --- Clear conversation: clears the screen only (history is kept) --- */
   clearButton.addEventListener("click", () => {
+    clearVisibleConversation();
+    closeDrawerOnPhone();
+    messageInput.focus();
+  });
+
+  /* --- Clear history: deletes saved history, after asking --- */
+  clearHistoryButton.addEventListener("click", async () => {
     if (!conversationHistory.length) return;
-    if (!confirm("Clear the whole conversation?")) return;
+    if (!confirm("Delete all saved history? Analyses on screen stay until you clear the conversation.")) return;
     conversationHistory.length = 0;
-    HistoryStorage.clear();
-    messages.replaceChildren();
+    await HistoryStorage.clear();
     history.replaceChildren();
     historyEmpty.hidden = false;
-    welcome.hidden = false;
-    clearButton.disabled = true;
-    closeDrawerOnPhone();
+    clearHistoryButton.disabled = true;
   });
-  clearButton.disabled = true;
+
+  updateSendButton();
+  updateClearButton();
+  clearHistoryButton.disabled = true;
 }
 
 if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded", initUI);

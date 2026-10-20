@@ -1,6 +1,8 @@
-# Security Message Adviser
+# Scout: Security Message Adviser
 
 *Evidence first. Assumptions second.*
+
+In V1 the assistant is called **Scout**. Its logo is an SVG drawn in `index.html` (`<symbol id="scout-logo">`), and its AI instructions are `SYSTEM_PROMPT` in `server/ai-service.mjs` (version shown in Testing Mode).
 
 | Version | What decides | Where |
 |---|---|---|
