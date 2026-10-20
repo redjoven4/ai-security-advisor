@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sentinel | Security Message Adviser</title>
+  <meta name="description" content="A local, rule-based adviser that helps you decide what to do with a message, based only on the evidence you supply.">
+
+  <!-- Inter font (optional). Offline, the page falls back to the system font. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<!-- Reusable shield icon (drawn locally, no icon library needed) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="shield" viewBox="0 0 24 24">
+    <path d="M12 2.5 4.5 5.3v6.2c0 4.6 3.1 8.6 7.5 10 4.4-1.4 7.5-5.4 7.5-10V5.3L12 2.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+    <path d="m8.8 12.2 2.2 2.2 4.3-4.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+</svg>
+
+<div class="app">
+
+  <!-- =========================
+       SIDEBAR
+  ========================== -->
+  <aside id="sidebar" class="sidebar" aria-label="Sidebar">
+
+    <div class="brand">
+      <div class="logo" aria-hidden="true"><svg><use href="#shield"/></svg></div>
+      <div class="brand-text">
+        <h1>Security Adviser</h1>
+        <p>Evidence first. Assumptions second.</p>
+      </div>
+      <button id="collapseSidebar" class="icon-button" aria-label="Collapse sidebar" title="Collapse sidebar">⟨</button>
+    </div>
+
+    <button id="newAnalysis" class="new-analysis">
+      <span aria-hidden="true">＋</span>
+      New analysis
+    </button>
+
+    <div class="sidebar-section">
+      <p class="section-title">HISTORY</p>
+      <!-- Filled by script.js from conversationHistory -->
+      <div id="history" class="history"></div>
+      <p id="historyEmpty" class="history-empty">No analyses yet.</p>
+    </div>
+
+    <div class="sidebar-bottom">
+
+      <!-- Testing Mode: shows which rules triggered under each result -->
+      <label class="testing-row" for="testingMode">
+        <span>Testing mode</span>
+        <input type="checkbox" id="testingMode" class="visually-hidden">
+        <span class="switch" aria-hidden="true"></span>
+      </label>
+
+      <button id="showExamples" class="sidebar-option">
+        <span aria-hidden="true">🧪</span> Example cases
+      </button>
+
+      <button id="clearConversation" class="sidebar-option">
+        <span aria-hidden="true">🗑</span> Clear conversation
+      </button>
+
+      <div class="version">
+        <span>Adviser version</span>
+        <strong data-version>V0</strong>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- Dark overlay behind the sidebar on phones -->
+  <div id="overlay" class="overlay" hidden></div>
+
+
+  <!-- =========================
+       MAIN CHAT
+  ========================== -->
+  <main class="main">
+
+    <!-- Shown on phones, and on desktop when the sidebar is collapsed -->
+    <header class="top-bar">
+      <button id="openSidebar" class="icon-button menu-button" aria-label="Open sidebar" title="Open sidebar">☰</button>
+      <span class="top-bar-title">Security Adviser</span>
+      <span class="mobile-version" data-version>V0</span>
+    </header>
+
+    <div id="chat" class="chat">
+
+      <!-- WELCOME / EMPTY STATE -->
+      <section id="welcome" class="welcome">
+        <div class="hero-icon" aria-hidden="true"><svg><use href="#shield"/></svg></div>
+
+        <h2>Analyse a suspicious message</h2>
+        <p>Paste a message and I'll evaluate what the supplied evidence actually supports.</p>
+
+        <!-- These only FILL the composer; the adviser still analyses normally -->
+        <div class="suggestions">
+          <button data-example="7">
+            <span class="suggestion-icon" aria-hidden="true">🎮</span>
+            <div>
+              <strong>Gaming account message</strong>
+              <small>An account warning with a link</small>
+            </div>
+          </button>
+          <button data-example="3">
+            <span class="suggestion-icon" aria-hidden="true">♟</span>
+            <div>
+              <strong>Chess/club invitation</strong>
+              <small>A club update with a deadline</small>
+            </div>
+          </button>
+          <button data-example="0">
+            <span class="suggestion-icon" aria-hidden="true">💬</span>
+            <div>
+              <strong>Everyday message</strong>
+              <small>A normal message from a friend</small>
+            </div>
+          </button>
+        </div>
+
+        <p class="limitations">
+          I only judge the words you give me. I can't verify who sent a message, open or inspect links,
+          confirm real-world events, or guarantee that a message is safe or malicious. I never take actions for you.
+        </p>
+      </section>
+
+      <!-- Analyses appear here -->
+      <section id="messages" class="messages" aria-label="Conversation" aria-live="polite"></section>
+    </div>
+
+
+    <!-- =========================
+         COMPOSER
+    ========================== -->
+    <div class="composer-area">
+      <form id="analyseForm" class="composer-form" novalidate>
+
+        <div id="backgroundContainer" class="background-container" hidden>
+          <div class="background-header">
+            <label for="backgroundInput">Known background (optional)</label>
+            <button type="button" id="closeBackground" aria-label="Remove background field" title="Remove background">×</button>
+          </div>
+          <textarea id="backgroundInput" rows="2"
+            placeholder="e.g. I wasn't trying to log in and I don't know this person."></textarea>
+        </div>
+
+        <div class="composer">
+          <label for="messageInput" class="visually-hidden">Message to analyse (required)</label>
+          <textarea id="messageInput" rows="2" placeholder="Paste a message to analyse…"></textarea>
+
+          <div class="composer-bottom">
+            <button type="button" id="backgroundButton" class="background-button" aria-expanded="false" aria-controls="backgroundContainer">
+              ＋ Add background
+            </button>
+            <button type="submit" id="sendButton" class="send-button is-empty" aria-label="Analyse message" title="Analyse message (Enter)">↑</button>
+          </div>
+        </div>
+
+        <p id="formError" class="form-error" role="alert"></p>
+      </form>
+
+      <p class="privacy">
+        Runs locally in your browser. The adviser only evaluates the information you provide and cannot verify senders or websites.
+      </p>
+    </div>
+
+  </main>
+</div>
+
+
+<!-- =========================
+     EXAMPLE CASES DIALOG
+========================== -->
+<dialog id="examplesDialog" class="examples-dialog" aria-labelledby="examplesTitle">
+  <div class="dialog-header">
+    <div>
+      <h3 id="examplesTitle">Example test cases</h3>
+      <p>Fictional messages. Choosing one only fills the composer — the adviser still analyses it normally.</p>
+    </div>
+    <button type="button" id="closeExamples" class="icon-button" aria-label="Close examples">×</button>
+  </div>
+  <div id="examplesList" class="examples-list"></div>
+</dialog>
+
+<script src="script.js"></script>
+</body>
+</html>
