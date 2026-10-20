@@ -1,24 +1,39 @@
 /* =====================================================================
    V1 — SERVER-SIDE AI SERVICE  (server/ai-service.mjs)
    ---------------------------------------------------------------------
-   Sends the message + background to Claude and turns the reply into the
-   SAME result shape that V0's analyseMessage() produces, so the existing
-   result cards can display it unchanged.
+   Sends the message + background to an AI model and turns the reply into
+   the SAME result shape that V0's analyseMessage() produces, so the
+   existing result cards can display it unchanged.
+
+   Two AI engines are supported (choose with AI_PROVIDER in .env):
+     "ollama" – a small open-source model running on THIS computer through
+                the free Ollama app. Free, offline, no API key. (default)
+     "claude" – Anthropic's Claude API. Needs an API key and credits.
 
      1. Build the request  (system prompt + inputs as JSON data)
-     2. Call Claude        (structured output: must match RESPONSE_SCHEMA)
+     2. Call the AI        (structured output: must match RESPONSE_SCHEMA)
      3. Validate           (decision allowed? sections present? quotes real?)
      4. Convert            (AI fields → existing UI result shape)
 
-   The API key is read from the environment by the SDK on the server.
+   Any API key is read from the environment on the server.
    It is never sent to the browser.
    ===================================================================== */
 
 import Anthropic from "@anthropic-ai/sdk";
 
-// Model and effort can be changed in .env without touching the code.
-export const MODEL = process.env.CLAUDE_MODEL || "claude-opus-5-5";
+// Which AI engine answers. Settings can be changed in .env without touching the code.
+export const AI_PROVIDER = (process.env.AI_PROVIDER || "ollama").toLowerCase();
+
+// Local model settings (AI_PROVIDER=ollama)
+const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "qwen2.5:3b";
+
+// Claude settings (AI_PROVIDER=claude)
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || "claude-opus-5-5";
 const EFFORT = process.env.CLAUDE_EFFORT || "medium";
+
+// The model that will answer, shown in Testing Mode and the server log.
+export const MODEL = AI_PROVIDER === "claude" ? CLAUDE_MODEL : OLLAMA_MODEL;
 
 // Limits on what the browser may send (keeps requests small and cheap).
 export const MAX_MESSAGE_CHARS = 5000;
@@ -188,13 +203,65 @@ export function validateAndConvert(ai, message, background) {
 }
 
 /* ---------------------------------------------------------------------
-   4. CALL CLAUDE
+   4. CALL THE AI
+   analyse() picks the engine; both engines share the validation above.
    --------------------------------------------------------------------- */
 
-let client = null;
 export function aiConfigured() {
+  if (AI_PROVIDER === "ollama") return true; // no key needed; checked when called
   return Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
 }
+
+export async function analyse(message, background) {
+  if (AI_PROVIDER === "ollama") return analyseWithOllama(message, background);
+  if (AI_PROVIDER === "claude") return analyseWithClaude(message, background);
+  throw new AnalysisError(500, `Unknown AI_PROVIDER "${AI_PROVIDER}" in .env. Use "ollama" or "claude".`);
+}
+
+// --- Engine 1: small local model through Ollama (free, runs on this computer) ---
+export async function analyseWithOllama(message, background) {
+  let response;
+  try {
+    response = await fetch(`${OLLAMA_URL}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        stream: false,
+        format: RESPONSE_SCHEMA, // the model must reply in exactly this JSON shape
+        options: { temperature: 0 }, // as consistent as possible between runs
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          // Sent as JSON so text inside the message can't pretend to be instructions.
+          { role: "user", content: JSON.stringify({ message, background }) },
+        ],
+      }),
+      signal: AbortSignal.timeout(120_000),
+    });
+  } catch (error) {
+    if (error.name === "TimeoutError") throw new AnalysisError(504, "The local AI took too long to answer. Please try again.", "ollama timeout");
+    throw new AnalysisError(503, "The local AI isn't running. Open the Ollama app, then try again.", error.message);
+  }
+
+  if (response.status === 404) {
+    throw new AnalysisError(503, `The local AI model "${OLLAMA_MODEL}" isn't downloaded yet. In a terminal run: ollama pull ${OLLAMA_MODEL}`, "model not found");
+  }
+  if (!response.ok) {
+    throw new AnalysisError(502, "The local AI had a problem. Please try again.", `ollama ${response.status} ${await response.text()}`);
+  }
+
+  const data = await response.json();
+  let parsed;
+  try {
+    parsed = JSON.parse(data.message?.content || "");
+  } catch {
+    throw new AnalysisError(502, "The local AI returned an unreadable answer. Please try again.", "invalid JSON from ollama");
+  }
+  return validateAndConvert(parsed, message, background);
+}
+
+// --- Engine 2: Claude API (needs ANTHROPIC_API_KEY) ---
+let client = null;
 
 export async function analyseWithClaude(message, background) {
   if (!aiConfigured()) {
@@ -205,7 +272,7 @@ export async function analyseWithClaude(message, background) {
   let response;
   try {
     response = await client.beta.messages.create({
-      model: MODEL,
+      model: CLAUDE_MODEL,
       max_tokens: 16000,
       system: SYSTEM_PROMPT,
       // The inputs are sent as JSON so text inside the message can't

@@ -25,7 +25,7 @@ try {
   // no .env file — the AI will report that it isn't configured
 }
 
-const { analyseWithClaude, aiConfigured, AnalysisError, MODEL, MAX_MESSAGE_CHARS, MAX_BACKGROUND_CHARS } = await import("./ai-service.mjs");
+const { analyse, aiConfigured, AnalysisError, AI_PROVIDER, MODEL, MAX_MESSAGE_CHARS, MAX_BACKGROUND_CHARS } = await import("./ai-service.mjs");
 const db = await import("./db.mjs");
 
 const PORT = Number(process.env.PORT) || 8080;
@@ -99,7 +99,7 @@ async function handleAnalyse(req, res) {
     if (message.length > MAX_MESSAGE_CHARS) throw new AnalysisError(400, `Please keep the message under ${MAX_MESSAGE_CHARS} characters.`);
     if (background.length > MAX_BACKGROUND_CHARS) throw new AnalysisError(400, `Please keep the background under ${MAX_BACKGROUND_CHARS} characters.`);
 
-    const result = await analyseWithClaude(message, background);
+    const result = await analyse(message, background);
     await db.saveAnalysis({ timestamp: new Date().toISOString(), message, background, result });
 
     console.log(`[analyse] ${result.decision} via ${result.model} in ${Date.now() - started}ms`);
@@ -148,7 +148,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/api/history") return handleHistory(req, res);
   if (url.pathname === "/api/health") {
     // Says WHETHER a key is set — never the key itself.
-    return sendJson(res, 200, { ok: true, version: "V1", aiConfigured: aiConfigured(), model: MODEL, database: db.databaseConfigured() });
+    return sendJson(res, 200, { ok: true, version: "V1", provider: AI_PROVIDER, aiConfigured: aiConfigured(), model: MODEL, database: db.databaseConfigured() });
   }
   if (url.pathname === "/v0") return res.writeHead(301, { Location: "/v0/" }).end();
 
@@ -160,5 +160,6 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, () => {
   console.log(`Security Message Adviser V1 running at http://localhost:${PORT}`);
   console.log(`V0 baseline available at   http://localhost:${PORT}/v0/`);
+  console.log(`AI engine: ${AI_PROVIDER} (${MODEL})`);
   if (!aiConfigured()) console.warn("Warning: ANTHROPIC_API_KEY is not set — add it to .env to enable AI analysis.");
 });

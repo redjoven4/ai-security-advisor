@@ -10,10 +10,14 @@
 ## V1: AI-assisted adviser
 
 ### How to run V1
-1. Install [Node.js](https://nodejs.org) 20.12 or newer.
-2. In this folder run `npm install` once.
-3. Copy `.env.example` to `.env` and put your Claude API key after `ANTHROPIC_API_KEY=`.
-4. Run `npm start`, then open **http://localhost:8080** (V0 is also at http://localhost:8080/v0/).
+V1 can use either of two AI engines, set by `AI_PROVIDER` in `.env`:
+- **`ollama` (default, free):** a small open-source model (`qwen2.5:3b`) running on your own computer through the [Ollama](https://ollama.com) app. No API key, no cost, and nothing is sent online.
+- **`claude`:** Anthropic's Claude API. It's more capable, but needs an API key and credits.
+
+1. Install [Node.js](https://nodejs.org) 20.12 or newer, then run `npm install` once in this folder.
+2. **Free local AI:** install and open the Ollama app, then run `ollama pull qwen2.5:3b` once (1.9 GB).
+   **Or Claude:** copy `.env.example` to `.env`, set `AI_PROVIDER=claude` and add your `ANTHROPIC_API_KEY`.
+3. Run `npm start`, then open **http://localhost:8080** (V0 is also at http://localhost:8080/v0/).
 
 Opening `index.html` by double-clicking still shows the UI, but V1 can't analyse without the server. It shows an error card with **Use V0 rules instead**.
 
@@ -35,7 +39,7 @@ Existing result cards         same shape as V0's analyseMessage()
 - **History** still lives in memory for the session, through `storage.js`. `server/db.mjs` is where a database can be connected later.
 
 ### V1 privacy and limitations
-V1 sends the message and background to Anthropic's Claude API, so it no longer runs entirely on your computer. Use fictional messages. AI answers can vary between runs and can be wrong. It still cannot verify senders, links or websites.
+With `ollama`, everything stays on your computer. With `claude`, the message and background are sent to Anthropic's API. Either way, use fictional messages. AI answers can be wrong; the small local model in particular makes more mistakes than V0 on some cases (see Testing Mode's "V0 rules would decide"). It still cannot verify senders, links or websites.
 
 ---
 

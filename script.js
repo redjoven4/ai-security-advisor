@@ -1200,6 +1200,18 @@ function initUI() {
 
   document.querySelectorAll("[data-version]").forEach((n) => (n.textContent = ADVISER_VERSION));
 
+  // V1: say truthfully where the message is analysed (this computer or online)
+  fetch("/api/health")
+    .then((res) => res.json())
+    .then((health) => {
+      if (health.provider === "ollama") {
+        $("privacyNote").textContent = "V1 analyses your message with a small AI model running on this computer — nothing is sent online. It only evaluates the information you provide and cannot verify senders or websites.";
+      } else if (health.provider === "claude") {
+        $("privacyNote").textContent = "V1 sends your message and background to an AI service (Claude) for analysis. It only evaluates the information you provide and cannot verify senders or websites.";
+      }
+    })
+    .catch(() => {}); // no server (e.g. opened by double-click): keep the general wording
+
   let isAnalysing = false; // prevents accidental double submissions
 
   /* --- Composer helpers --- */
