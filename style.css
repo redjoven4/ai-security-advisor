@@ -650,6 +650,34 @@ mark {
 .danger .decision   { color: var(--red); }
 
 
+/* V1: card shown when the AI analysis could not be completed */
+.result-card.error  { border-top: 2px solid var(--text-muted); }
+.error .decision    { color: var(--text-secondary); }
+.error .decision-header { border-bottom: none; }
+
+.error-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.error-button {
+    padding: 8px 13px;
+    border-radius: 9px;
+    border: 1px solid var(--border-light);
+    background: var(--surface-hover);
+    color: var(--text);
+    font-size: 13px;
+    transition: 0.2s;
+}
+
+.error-button:hover {
+    background: #1f252f;
+    border-color: #444b57;
+}
+
+
 /* RESULT CONTENT */
 
 .result-content { padding: 0 20px 6px; }

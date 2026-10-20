@@ -1,0 +1,15 @@
+{
+  "name": "security-message-adviser",
+  "version": "1.0.0",
+  "description": "Security Message Adviser V1 \u2013 AI-assisted (V0 rule-based baseline kept in v0/)",
+  "private": true,
+  "scripts": {
+    "start": "node server/server.mjs"
+  },
+  "engines": {
+    "node": ">=20.12"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0"
+  }
+}

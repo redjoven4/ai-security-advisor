@@ -16,7 +16,13 @@
      STAGE 5  DECISION MAKING   – choose one of the three decisions
      STAGE 6  OUTPUT GENERATION – evidence, why, uncertainty, next step
      STAGE 7  analyseMessage()  – runs stages 3–6 and returns a result
+     STAGE 7B analyseWithAI()   – V1: asks the AI via the server
      STAGE 8  UI RENDERING      – chat bubbles, testing mode, history
+
+   V1 NOTE: V1 decisions come from the AI (Stage 7B → server/). Stages
+   1–7 are V0's rule engine, kept unchanged: V1 uses it for the "V0 rules
+   would decide" comparison in Testing Mode and as an optional fallback.
+   The untouched V0 app is in the v0/ folder.
    ===================================================================== */
 
 /* =====================================================================
@@ -25,7 +31,7 @@
 
 // Change this when you save a new version (V0, V1, V2, Final...).
 // Keep old versions in separate folders so they can be compared.
-const ADVISER_VERSION = "V0";
+const ADVISER_VERSION = "V1";
 
 // The ONLY three decisions the adviser is allowed to give.
 const DECISIONS = {
@@ -825,6 +831,68 @@ function analyseMessage(rawMessage, rawBackground) {
 if (typeof module !== "undefined") module.exports = { analyseMessage, ADVISER_VERSION };
 
 /* =====================================================================
+   STAGE 7B — V1: AI-ASSISTED ANALYSIS  (new in V1)
+   ---------------------------------------------------------------------
+   Sends the message + background to OUR server (POST /api/analyse).
+   The server talks to the AI, so the API key never reaches the browser.
+   The server replies in the same result shape as analyseMessage(), so
+   the existing result cards display it without changes.
+   ===================================================================== */
+
+const AI_API_URL = "/api/analyse";
+const AI_TIMEOUT_MS = 90000;
+
+async function analyseWithAI(rawMessage, rawBackground) {
+  // Opened by double-clicking index.html: there is no server to ask.
+  if (location.protocol === "file:") {
+    throw new Error("V1 needs its small server for AI analysis. In the project folder run \"npm start\", then open http://localhost:8080. (The V0 rules work without it.)");
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+  let response;
+  try {
+    response = await fetch(AI_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: rawMessage, background: rawBackground }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    throw new Error(error.name === "AbortError" ? "The AI took too long to answer. Please try again." : "Could not reach the adviser's server. Is it running (npm start)?");
+  } finally {
+    clearTimeout(timer);
+  }
+
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    // not JSON — handled below
+  }
+  if (!response.ok || !data || !data.result) {
+    throw new Error((data && data.error) || `The server returned an error (${response.status}).`);
+  }
+
+  const result = data.result;
+  result.message = rawMessage.trim();
+  result.background = (rawBackground || "").trim();
+
+  // For Testing Mode: what would the unchanged V0 rules have decided?
+  const v0 = analyseMessage(rawMessage, rawBackground);
+  result.v0Comparison = { decision: v0.decision, reasons: v0.allReasons };
+  return result;
+}
+
+// Optional fallback when the AI is unavailable: the V0 rules, clearly labelled.
+function analyseWithV0Rules(rawMessage, rawBackground) {
+  const result = analyseMessage(rawMessage, rawBackground);
+  result.version = "V0 rules (fallback)";
+  result.engine = "v0_rules";
+  return result;
+}
+
+/* =====================================================================
    STAGE 8 — UI RENDERING
    ---------------------------------------------------------------------
    Everything below only deals with the page. It calls analyseMessage()
@@ -1030,9 +1098,49 @@ function renderResult(entry) {
   addTestLine("Triggered rules:", r.triggeredRules);
   addTestLine("Decision:", [r.decision], true);
   addTestLine("Decided by:", r.allReasons);
+  // V1: which engine answered, and what the V0 rules would have said
+  if (r.engine) addTestLine("Engine:", [r.engine === "ai" ? `ai (${r.model})` : r.engine]);
+  if (r.v0Comparison) addTestLine("V0 rules would decide:", [r.v0Comparison.decision, ...r.v0Comparison.reasons]);
+  if (r.checks && r.checks.length) addTestLine("Checks:", r.checks);
   content.appendChild(test);
 
   card.appendChild(content);
+  wrapper.appendChild(card);
+  return wrapper;
+}
+
+// V1: shown when the AI analysis could not be completed. No decision is
+// shown, because none was made.
+function renderErrorCard(errorText, onRetry, onUseV0) {
+  const wrapper = el("div", "adviser-response");
+
+  const name = el("div", "adviser-name");
+  const logo = el("div", "small-logo");
+  logo.appendChild(shieldIcon());
+  name.append(logo, document.createTextNode("Security Adviser"));
+  wrapper.appendChild(name);
+
+  const card = el("article", "result-card error");
+  card.setAttribute("role", "alert");
+  const header = el("div", "decision-header");
+  header.appendChild(el("div", "decision-label", "ANALYSIS NOT COMPLETED"));
+  const decision = el("div", "decision");
+  const icon = el("span", "decision-icon", "⚪");
+  icon.setAttribute("aria-hidden", "true");
+  decision.append(icon, el("span", null, "No decision was made"));
+  header.append(decision, el("p", "decision-meaning", errorText));
+
+  const actions = el("div", "error-actions");
+  const retry = el("button", "error-button", "↻ Retry");
+  retry.type = "button";
+  retry.addEventListener("click", onRetry);
+  const useV0 = el("button", "error-button", "Use V0 rules instead");
+  useV0.type = "button";
+  useV0.addEventListener("click", onUseV0);
+  actions.append(retry, useV0);
+  header.appendChild(actions);
+
+  card.appendChild(header);
   wrapper.appendChild(card);
   return wrapper;
 }
@@ -1258,7 +1366,12 @@ function initUI() {
       return;
     }
     errorBox.textContent = "";
+    runAnalysis(message, background);
+  });
 
+  // V1: one analysis — ask the AI, then show the result or an error card.
+  // Used by the Analyse button and by Retry.
+  async function runAnalysis(message, background) {
     isAnalysing = true;
     sendButton.disabled = true;
     welcome.hidden = true;
@@ -1268,30 +1381,61 @@ function initUI() {
     messages.appendChild(loading.box);
     chat.scrollTop = chat.scrollHeight;
     loading.steps.forEach((step, i) => setTimeout(() => step.classList.add("done"), LOADING_STEP_MS * (i + 1)));
+    const minimumWait = new Promise((resolve) => setTimeout(resolve, LOADING_STEP_MS * (LOADING_STEPS.length + 1)));
 
-    setTimeout(() => {
-      // The real work: the unchanged rule-based analyser
-      const result = analyseMessage(message, background);
-      const entry = { number: conversationHistory.length + 1, timestamp: new Date(), result };
-      conversationHistory.push(entry);
+    let result = null;
+    let failure = null;
+    try {
+      [result] = await Promise.all([analyseWithAI(message, background), minimumWait]);
+    } catch (error) {
+      await minimumWait;
+      failure = error;
+    }
+    loading.box.remove();
 
-      loading.box.remove();
-      const userRow = renderUserBubble(entry);
-      messages.append(userRow, renderResult(entry));
-      addToHistory(entry);
-      userRow.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (result) {
+      showResult(result);
+    } else {
+      // Keep the composer filled so the user can edit or resend.
+      const card = renderErrorCard(
+        failure.message,
+        () => {
+          if (isAnalysing) return;
+          card.remove();
+          runAnalysis(message, background);
+        },
+        () => {
+          if (isAnalysing) return;
+          card.remove();
+          showResult(analyseWithV0Rules(message, background));
+        }
+      );
+      messages.appendChild(card);
+      card.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    isAnalysing = false;
+    sendButton.disabled = false;
+  }
 
-      // Reset the composer for the next message
-      messageInput.value = "";
-      closeBackground();
-      autoResize(messageInput);
-      updateSendButton();
-      isAnalysing = false;
-      sendButton.disabled = false;
-      clearButton.disabled = false;
-      messageInput.focus();
-    }, LOADING_STEP_MS * (LOADING_STEPS.length + 1));
-  });
+  // Add a finished result to the conversation and history (same as V0).
+  function showResult(result) {
+    const entry = { number: conversationHistory.length + 1, timestamp: new Date(), result };
+    conversationHistory.push(entry);
+    HistoryStorage.save(entry);
+
+    const userRow = renderUserBubble(entry);
+    messages.append(userRow, renderResult(entry));
+    addToHistory(entry);
+    userRow.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    // Reset the composer for the next message
+    messageInput.value = "";
+    closeBackground();
+    autoResize(messageInput);
+    updateSendButton();
+    clearButton.disabled = false;
+    messageInput.focus();
+  }
 
   /* --- New analysis: empty the composer (history stays until cleared) --- */
   $("newAnalysis").addEventListener("click", () => {
@@ -1310,6 +1454,7 @@ function initUI() {
     if (!conversationHistory.length) return;
     if (!confirm("Clear the whole conversation?")) return;
     conversationHistory.length = 0;
+    HistoryStorage.clear();
     messages.replaceChildren();
     history.replaceChildren();
     historyEmpty.hidden = false;

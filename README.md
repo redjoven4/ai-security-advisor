@@ -1,6 +1,45 @@
-# Security Message Adviser (V0)
+# Security Message Adviser
 
 *Evidence first. Assumptions second.*
+
+| Version | What decides | Where |
+|---|---|---|
+| **V0** | Rule-based baseline (deterministic patterns) | `v0/`: open `v0/index.html` directly, or git tag `v0` |
+| **V1** | AI-assisted (Claude), same UI | this folder: needs the small server below |
+
+## V1: AI-assisted adviser
+
+### How to run V1
+1. Install [Node.js](https://nodejs.org) 20.12 or newer.
+2. In this folder run `npm install` once.
+3. Copy `.env.example` to `.env` and put your Claude API key after `ANTHROPIC_API_KEY=`.
+4. Run `npm start`, then open **http://localhost:8080** (V0 is also at http://localhost:8080/v0/).
+
+Opening `index.html` by double-clicking still shows the UI, but V1 can't analyse without the server. It shows an error card with **Use V0 rules instead**.
+
+### How V1 works
+```
+Existing UI (index.html, style.css, script.js)
+   ↓ analyseWithAI()          script.js, Stage 7B
+POST /api/analyse             server/server.mjs
+   ↓ analyseWithClaude()      server/ai-service.mjs
+Claude API (structured JSON reply)
+   ↓ validateAndConvert()     checks decision, required sections, real quotes
+Existing result cards         same shape as V0's analyseMessage()
+```
+- **The API key stays on the server** (`.env`, ignored by git). It is never sent to the browser.
+- **Message and background** are sent as JSON data, so instructions inside a message are treated as text to analyse.
+- **Quote check:** any evidence quote that doesn't appear word-for-word in your message or background is removed (shown as `unverified_quote_removed` in Testing Mode).
+- **Testing Mode** also shows the engine/model and **what the V0 rules would have decided**, for comparing versions.
+- **If the AI fails** (server off, no key, API error, refusal), an error card offers **Retry** or **Use V0 rules instead**, which is clearly labelled "V0 rules (fallback)".
+- **History** still lives in memory for the session, through `storage.js`. `server/db.mjs` is where a database can be connected later.
+
+### V1 privacy and limitations
+V1 sends the message and background to Anthropic's Claude API, so it no longer runs entirely on your computer. Use fictional messages. AI answers can vary between runs and can be wrong. It still cannot verify senders, links or websites.
+
+---
+
+## V0 (rule-based baseline): original README
 
 ## 1. What it does
 You paste in a message (plus optional background) and the adviser tells you what to do safely. It works from the
