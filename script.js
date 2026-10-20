@@ -31,7 +31,7 @@
 
 // Change this when you save a new version (V0, V1, V2, Final...).
 // Keep old versions in separate folders so they can be compared.
-const ADVISER_VERSION = "V1";
+const ADVISER_VERSION = "V2";
 
 // The ONLY three decisions the adviser is allowed to give.
 const DECISIONS = {
@@ -1100,7 +1100,7 @@ function renderResult(entry) {
     test.appendChild(line);
   };
   // V1: how this answer was produced
-  const method = r.engine === "ai" ? (r.provider === "claude" ? "Claude API" : "Local AI (Ollama)") : "V0 rules (fallback)";
+  const method = r.engine === "ai" ? `${r.provider === "claude" ? "Claude API" : "Local AI (Ollama)"} + V0 safety floor` : "V0 rules (fallback)";
   addTestLine("Version:", [ADVISER_VERSION]);
   addTestLine("Method:", [method]);
   addTestLine("Model:", [r.model || "none (rule-based)"]);
@@ -1111,6 +1111,8 @@ function renderResult(entry) {
   addTestLine("Decided by:", r.allReasons);
   // What the unchanged V0 rules would have said, for comparison
   if (r.v0Comparison) addTestLine("V0 rules would decide:", [r.v0Comparison.decision, ...r.v0Comparison.reasons]);
+  // V2: did the V0 safety floor raise the AI's decision?
+  if (r.engine === "ai") addTestLine("Safety floor:", [(r.checks || []).includes("safety_floor_applied") ? "applied (V0 rules raised the AI's decision)" : "not needed"]);
   if (r.checks && r.checks.length) addTestLine("Checks:", r.checks);
   content.appendChild(test);
 
@@ -1219,9 +1221,9 @@ function initUI() {
     .then((res) => res.json())
     .then((health) => {
       if (health.provider === "ollama") {
-        $("privacyNote").textContent = "V1 analyses your message with a small AI model running on this computer — nothing is sent online. It only evaluates the information you provide and cannot verify senders or websites.";
+        $("privacyNote").textContent = "Scout analyses your message with a small AI model running on this computer — nothing is sent online. It only evaluates the information you provide and cannot verify senders or websites.";
       } else if (health.provider === "claude") {
-        $("privacyNote").textContent = "V1 sends your message and background to an AI service (Claude) for analysis. It only evaluates the information you provide and cannot verify senders or websites.";
+        $("privacyNote").textContent = "Scout sends your message and background to an AI service (Claude) for analysis. It only evaluates the information you provide and cannot verify senders or websites.";
       }
     })
     .catch(() => {}); // no server (e.g. opened by double-click): keep the general wording

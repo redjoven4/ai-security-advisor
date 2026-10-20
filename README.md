@@ -7,7 +7,16 @@ In V1 the assistant is called **Scout**. Its logo is an SVG drawn in `index.html
 | Version | What decides | Where |
 |---|---|---|
 | **V0** | Rule-based baseline (deterministic patterns) | `v0/`: open `v0/index.html` directly, or git tag `v0` |
-| **V1** | AI-assisted (Claude), same UI | this folder: needs the small server below |
+| **V1** | AI-assisted (local model or Claude), same UI | git tag `v1` |
+| **V2** | V1 + a V0 "safety floor" and an advice check | this folder (`dev` branch): needs the small server below |
+
+## V2: what changed from V1, and why
+V1 testing (35 cases, local `qwen2.5:3b`) found two problems: the AI sometimes let a risky request through (e.g. "Wanna trade accounts?" got 🟢), and its advice sometimes brought in people the user never mentioned ("check with a friend or family member").
+- **Safety floor** (`server/safety-floor.mjs`): after the AI answers, the unchanged V0 rules check the message. If they find a request that is risky in itself (password, code, 2FA, account access or trade, remote access), the decision is raised to ⛔ Do not follow. The floor only ever raises a decision; everything else is the AI's answer. Testing Mode shows "Safety floor: applied" when it happens.
+- **Advice check** (`server/ai-service.mjs`): next steps that mention a friend, family, school, coach and so on that the message and background don't mention are removed.
+- The prompt (`scout-1.2`) and model are unchanged, so differences come from these two changes.
+
+Results on the same 35 cases: missed risky requests 1 → 0; matched expected decision 25 → 26; unnecessary warnings 5 → 5; advice mentioning people not in the input 20 → 8.
 
 ## V1: AI-assisted adviser
 

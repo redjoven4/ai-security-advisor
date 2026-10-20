@@ -27,6 +27,7 @@ try {
 
 const { analyse, aiConfigured, AnalysisError, AI_PROVIDER, MODEL, PROMPT_VERSION, MAX_MESSAGE_CHARS, MAX_BACKGROUND_CHARS } = await import("./ai-service.mjs");
 const db = await import("./db.mjs");
+const { applySafetyFloor } = await import("./safety-floor.mjs"); // V2
 
 const PORT = Number(process.env.PORT) || 8080;
 const HOST = process.env.HOST || "127.0.0.1";
@@ -99,7 +100,8 @@ async function handleAnalyse(req, res) {
     if (message.length > MAX_MESSAGE_CHARS) throw new AnalysisError(400, `Please keep the message under ${MAX_MESSAGE_CHARS} characters.`);
     if (background.length > MAX_BACKGROUND_CHARS) throw new AnalysisError(400, `Please keep the background under ${MAX_BACKGROUND_CHARS} characters.`);
 
-    const result = await analyse(message, background);
+    // V2: the AI decides, then the V0 rules can only RAISE a risky request to "Do not follow"
+    const result = applySafetyFloor(await analyse(message, background), message, background);
     result.responseMs = Date.now() - started; // shown in Testing Mode
     await db.saveAnalysis({ timestamp: new Date().toISOString(), message, background, result });
 
@@ -149,7 +151,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/api/history") return handleHistory(req, res);
   if (url.pathname === "/api/health") {
     // Says WHETHER a key is set — never the key itself.
-    return sendJson(res, 200, { ok: true, version: "V1", provider: AI_PROVIDER, aiConfigured: aiConfigured(), model: MODEL, promptVersion: PROMPT_VERSION, database: db.databaseConfigured() });
+    return sendJson(res, 200, { ok: true, version: "V2", provider: AI_PROVIDER, aiConfigured: aiConfigured(), model: MODEL, promptVersion: PROMPT_VERSION, database: db.databaseConfigured() });
   }
   if (url.pathname === "/v0") return res.writeHead(301, { Location: "/v0/" }).end();
 

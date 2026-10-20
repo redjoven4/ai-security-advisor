@@ -176,6 +176,17 @@ const INFERENCE_CHECKS = [
   },
 ];
 
+// V2: advice must not bring in people or organisations the user never
+// mentioned (V1 testing found steps like "check with a friend or family
+// member" for messages that had nothing to do with friends or family).
+const ADVICE_PEOPLE = /\b(friends?|family|parents?|mum|mom|dad|teachers?|school|coach|classmates?|teammates?|siblings?|brother|sister)\b/gi;
+
+function isUnsupportedAdvice(step, message, background) {
+  const supplied = looseText(`${message}\n${background}`);
+  const mentioned = step.match(ADVICE_PEOPLE) || [];
+  return mentioned.some((word) => !supplied.includes(word.toLowerCase().replace(/s$/, "")));
+}
+
 function isUnsupportedInference(statement, message, background) {
   const supplied = looseText(`${message}\n${background}`);
   return INFERENCE_CHECKS.some((check) => check.said.test(statement) && !check.support.test(supplied));
@@ -245,7 +256,16 @@ export function validateAndConvert(ai, message, background) {
   }
 
   const uncertainty = cleanStringList(ai.uncertainty, 4);
-  const safeNextStep = cleanStringList(ai.safe_next_steps, 3);
+  let safeNextStep = cleanStringList(ai.safe_next_steps, 3);
+
+  // V2: drop advice that invents people (keep at least one step)
+  const supportedSteps = safeNextStep.filter((step) => !isUnsupportedAdvice(step, message, background));
+  if (supportedSteps.length && supportedSteps.length < safeNextStep.length) {
+    safeNextStep = supportedSteps;
+    checks.push("unsupported_advice_removed");
+  } else if (!supportedSteps.length && safeNextStep.length) {
+    checks.push("possible_unsupported_advice");
+  }
 
   // Every analysis MUST contain these sections.
   if (!evidence.length || !uncertainty.length || !safeNextStep.length) {
@@ -257,7 +277,7 @@ export function validateAndConvert(ai, message, background) {
     .filter(Boolean);
 
   return {
-    version: "V1",
+    version: "V2",
     engine: "ai",
     provider: AI_PROVIDER,
     model: MODEL,
