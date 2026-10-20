@@ -928,13 +928,18 @@ const TONE_CLASS = { green: "safe", amber: "verify", red: "danger" };
 
 // The "analysing" steps shown while the adviser works. They match the
 // real stages of analyseMessage(); the analysis itself is instant.
+// V2: status lines shown while waiting for the AI. These describe the UI's
+// waiting stages only — they are not the AI's hidden reasoning, and Scout
+// never checks websites, senders, accounts or databases.
 const LOADING_STEPS = [
-  "Reading the message and background",
-  "Looking for security-relevant requests",
-  "Comparing with your background",
-  "Choosing a decision and writing advice",
+  "Reading the message...",
+  "Checking the supplied evidence...",
+  "Considering what's uncertain...",
+  "Preparing advice...",
 ];
-const LOADING_STEP_MS = 220;
+const LOADING_STEP_MS = 1400; // time each status line is shown
+const LOADING_MIN_MS = 1200; // shortest time the thinking state is shown
+const LOADING_FADE_MS = 200; // fade-out before the answer appears
 
 /* ---------- Small helpers ---------- */
 
@@ -1166,12 +1171,30 @@ function renderLoading() {
   const title = el("div", "loading-title");
   const dots = el("span", "typing-dots");
   dots.append(el("span"), el("span"), el("span"));
-  const logo = el("span", "small-logo");
+  const logo = el("span", "small-logo thinking-logo");
   logo.appendChild(scoutLogo());
-  title.append(logo, document.createTextNode("Scout is reading your message"), dots);
+  const status = el("span", "loading-status", LOADING_STEPS[0]);
+  title.append(logo, status, dots);
   box.appendChild(title);
-  const steps = LOADING_STEPS.map((text) => box.appendChild(el("div", "loading-step", text)));
-  return { box, steps };
+
+  // Cycle through the status lines, stopping on the last one
+  let step = 0;
+  const timer = setInterval(() => {
+    step++;
+    if (step >= LOADING_STEPS.length) return clearInterval(timer);
+    status.textContent = LOADING_STEPS[step];
+    status.classList.remove("tick");
+    void status.offsetWidth; // restart the small fade-in animation
+    status.classList.add("tick");
+  }, LOADING_STEP_MS);
+
+  // Fade the thinking state out, then remove it
+  const finish = () => {
+    clearInterval(timer);
+    box.classList.add("fade-out");
+    return new Promise((resolve) => setTimeout(() => (box.remove(), resolve()), LOADING_FADE_MS));
+  };
+  return { box, finish };
 }
 
 // One entry in the sidebar history list
@@ -1461,12 +1484,11 @@ function initUI() {
     welcome.hidden = true;
     const startedInView = viewId;
 
-    // Show the loading indicator and tick off each step
+    // Show Scout's thinking state while waiting for the AI
     const loading = renderLoading();
     messages.appendChild(loading.box);
     chat.scrollTop = chat.scrollHeight;
-    loading.steps.forEach((step, i) => setTimeout(() => step.classList.add("done"), LOADING_STEP_MS * (i + 1)));
-    const minimumWait = new Promise((resolve) => setTimeout(resolve, LOADING_STEP_MS * (LOADING_STEPS.length + 1)));
+    const minimumWait = new Promise((resolve) => setTimeout(resolve, LOADING_MIN_MS));
 
     let result = null;
     let failure = null;
@@ -1476,7 +1498,7 @@ function initUI() {
       await minimumWait;
       failure = error;
     }
-    loading.box.remove();
+    await loading.finish(); // fades out, then the answer card fades in
     isAnalysing = false;
     updateSendButton();
 

@@ -46,7 +46,7 @@ const DECISION_CODES = ["no_warning", "pause_verify", "do_not_follow"];
    The security rules are the same principles the V0 rules were built on.
    PROMPT_VERSION changes whenever this prompt changes (shown in Testing Mode).
    --------------------------------------------------------------------- */
-export const PROMPT_VERSION = "scout-1.2";
+export const PROMPT_VERSION = "scout-2.0";
 
 export const SYSTEM_PROMPT = `You are Scout, a Security Message Adviser.
 
@@ -67,14 +67,21 @@ You receive a JSON object with two fields:
 Judge mainly WHAT THE MESSAGE ASKS THE USER TO DO.
 - Urgency words ("urgent", "tonight", "immediately") never decide the result by themselves. "URGENT: practice moved to Court 2" needs no warning.
 - Spelling mistakes are weak evidence; polished, professional writing does not prove legitimacy.
+- Urgency, bad grammar, a request for money, a link or an unknown sender are never proof of a scam by themselves. Decide from the combination of what is asked, the evidence and the background.
 - Names, emojis, punctuation, politeness and formatting should not change the decision unless they change what is being asked.
 - A message warning the user ("never share your code") is not a request to share it.
 - A request for a password or code is "do_not_follow" even if it is polite, calm and perfectly spelled, and even if the background says the sender is a friend.
 - Use the background: e.g. a fee that matches what a coach already told the user can be "no_warning"; a fee when the school said the event is free is "pause_verify"; an unexpected sign-in code is worth checking.
+- If the message's instructions differ from what the background says will happen (a different amount, a different way, place or time to pay, a different person), that is a conflict: choose "pause_verify", state both sides as direct evidence, and do not claim the sender is fake.
 - Decide FIRST, then write. Scout's friendly tone must never soften the decision: a request to send a password or login details, share a sign-in / verification / 2FA code, give account access, trade or sell an account, or turn off security protections is ALWAYS "do_not_follow", however polite, calm or friendly the message is.
 - A message that only informs or warns (for example "Never share your password") and asks for nothing risky is "no_warning".
 
 ## Facts vs inferences (the most important rule)
+Sort everything you notice into three kinds:
+A. DIRECT EVIDENCE: something the message or background explicitly says. Only this kind goes in "evidence".
+B. REASONABLE INTERPRETATION: something the information suggests but does not state (for example that a bill might not be genuine). Never present it as a fact. If it matters, mention it in "why_this_matters" as a possibility ("could", "might").
+C. UNKNOWN: something you cannot determine (whether the user expected it, who really sent it, whether a bill, link or request is genuine). Put the unknowns that matter in "uncertainty".
+In "evidence", never call the sender or message suspicious, fake, impersonating someone, unexpected, unsolicited, genuine or legitimate unless the message or background explicitly says so.
 Every factual statement must be supported by either:
 1. the submitted message, or
 2. the supplied background.
@@ -98,10 +105,10 @@ Friendliness must NEVER reduce factual precision. Be reassuring without pretendi
 
 ## Output fields (friendly, plain language a teenager understands; precise; do not frighten)
 - "evidence": 1-5 items, the exact clues behind the decision, most important first. "statement" says in plain, specific words what the message or background actually says or asks (pattern: "The message asks you to [the actual request]." or "You said [what the background actually says]."). "quote" is a SHORT exact copy (a few words up to one sentence) of the words from the message or background that support it, copied character-for-character, or "" if there is no specific wording to quote. "source" is "message", "background", or "none" (when quote is ""). For "no_warning", say what the message does NOT ask you to do.
-- "uncertainty": 1-4 short statements of what you can't tell, written in the first person (pattern: "I can't tell from this message who actually sent it or whether [the actual claim] is genuine."). If there is a link, say that you didn't open or check it.
+- "uncertainty": 1-4 short statements of what you can't tell, written in the first person (pattern: "I can't tell from the information provided whether you were expecting [this request] or whether the sender is actually [who they claim to be]."). Name the specific missing facts that matter most instead of guessing them. If there is a link, say that you didn't open or check it.
 - "safe_next_steps": 1-3 specific, practical steps for THIS situation, written as friendly advice that fits what was actually asked (patterns: for a payment, "Don't pay through the message yet. Open the service's app or website the way you normally would and check whether the same request appears there."; for a code or password, "Don't share it."; for an unusual request from someone, "Check with them using a contact method you already know."). Only mention a friend, coach, school or company if the message or background mentions them. For "no_warning", "You don't need to do anything special based on what you've shown me." is fine. Never say that you, Scout, will do or have done anything (you do not send messages, open links, log in, check providers or contact anyone).
 - "why_this_matters": one or two friendly sentences of general reasoning (e.g. starting "That matters because...") that add no new facts about this sender, or "" if not useful.
-- "question": ONE question whose answer could genuinely change your advice, or "" if none would (normally "" for "do_not_follow").
+- "question": ONE specific question about the single missing fact that would most change your advice (pattern: "Were you already expecting [the actual request] from [who the message claims to be]?"), or "" if the decision is already clear. Always "" for "do_not_follow".
 - "risk_factors": short snake_case labels for the factors you noticed, for the testing view (e.g. "verification_code_request", "credential_request", "money_request", "login_via_link", "urgency", "authority_claim", "background_conflict", "instruction_in_message"). Empty list if none.`;
 
 /* ---------------------------------------------------------------------
@@ -174,6 +181,11 @@ const INFERENCE_CHECKS = [
     said: /\b(scam\w*|phishing|fraud\w*|fake|hacker|hacked|malicious)\b/i,
     support: /\b(scam\w*|phishing|fraud\w*|fake|hack\w*|malicious|compromised)/i,
   },
+  // V2: judgements about the sender that only the user (or an outside check) could know
+  {
+    said: /\b(suspicious\w*|impersonat\w*|pretend\w*|spoof\w*|genuine|legitimate|authentic|official)\b/i,
+    support: /\b(suspicious\w*|impersonat\w*|pretend\w*|spoof\w*|genuine|legitimate|authentic|official)/i,
+  },
 ];
 
 // V2: advice must not bring in people or organisations the user never
@@ -206,6 +218,10 @@ function cleanStringList(value, max) {
 // evidence section can only quote words that were really supplied.
 export function validateAndConvert(ai, message, background) {
   if (!ai || typeof ai !== "object") throw new AnalysisError(502, "The AI returned an unreadable answer. Please try again.");
+  // V2: basic type checks — malformed model output becomes a clear error card, never a crash
+  if (!Array.isArray(ai.evidence) || !Array.isArray(ai.uncertainty) || !Array.isArray(ai.safe_next_steps)) {
+    throw new AnalysisError(502, "The AI's answer was in the wrong format. Please try again.", "wrong field types");
+  }
   if (!DECISION_CODES.includes(ai.decision)) {
     throw new AnalysisError(502, "The AI returned an invalid decision. Please try again.", `bad decision: ${ai.decision}`);
   }
@@ -288,7 +304,8 @@ export function validateAndConvert(ai, message, background) {
     evidence,
     whyThisMatters,
     uncertainty,
-    question: typeof ai.question === "string" && ai.question.trim() ? ai.question.trim() : null,
+    // V2: no question when the safe decision is already clear ("Do not follow")
+    question: ai.decision !== "do_not_follow" && typeof ai.question === "string" && ai.question.trim() ? ai.question.trim() : null,
     safeNextStep,
     triggeredRules: riskFactors,
     checks,
