@@ -1928,8 +1928,6 @@ body.testing-mode .test-only { display: revert !important; }
 .main.space-on .space-stars.mid   { opacity: 1;    transition: opacity 1.8s ease 0.8s; }
 .main.space-on .space-stars.near  { opacity: 1;    transition: opacity 1.8s ease 1.1s; }
 .main.space-on .space-haze        { opacity: 1;    transition: opacity 2.2s ease 1.2s; }
-.main.space-on .planet            { opacity: 0.75; transition: opacity 2s ease 1.8s; }
-.main.space-on .planet-ringed     { opacity: 0.6; }
 
 /* Stars: one tiny element per layer, the dots are box-shadows (set by JS) */
 .space-stars { top: 0; left: 0; width: 1px; height: 1px; border-radius: 50%; }
@@ -1962,55 +1960,10 @@ body.testing-mode .test-only { display: revert !important; }
 
 .space-wave svg { width: 100%; height: 100%; display: block; }
 
-/* Distant planets: small, mostly off-screen, drifting very slowly */
-.planet { border-radius: 50%; animation: planetDrift 140s ease-in-out infinite alternate; }
-
-.planet-blue {
-    top: 7%;
-    right: -60px;
-    width: 150px;
-    height: 150px;
-    background: radial-gradient(circle at 34% 30%, #6c97ff 0%, #2149a8 40%, #0b1838 72%, #050a18 100%);
-    box-shadow: inset -20px -16px 34px rgba(0, 0, 0, 0.65), 0 0 50px rgba(74, 140, 255, 0.16);
-}
-
-.planet-violet {
-    bottom: 20%;
-    left: -32px;
-    width: 84px;
-    height: 84px;
-    background: radial-gradient(circle at 62% 34%, #9b7bff 0%, #42268c 48%, #140b2e 82%);
-    box-shadow: inset 10px -12px 22px rgba(0, 0, 0, 0.6);
-    animation-duration: 170s;
-}
-
-.planet-ringed {
-    top: 46%;
-    right: 7%;
-    width: 30px;
-    height: 30px;
-    background: radial-gradient(circle at 40% 35%, #a6f0ff 0%, #2a7c9c 55%, #0b2533 100%);
-    animation-duration: 200s;
-}
-
-.planet-ringed::after {
-    content: "";
-    position: absolute;
-    left: -60%;
-    top: 34%;
-    width: 220%;
-    height: 32%;
-    border: 1.5px solid rgba(166, 240, 255, 0.45);
-    border-radius: 50%;
-    transform: rotate(-16deg);
-}
-
-@keyframes planetDrift { from { transform: translate(0, 0); } to { transform: translate(-26px, 12px); } }
 
 /* Far Scouts sit behind the planets (so they can pass behind one) */
 .far-scouts { inset: 0; opacity: 1; }
 .space-layer > .far-scouts { opacity: 1; }
-.planet { z-index: 1; }
 
 /* Home Scout notices space: eyes look up, antenna glows */
 .hero-icon .robot-eyes { transition: transform 0.8s ease; }
@@ -2019,12 +1972,93 @@ body.testing-mode .test-only { display: revert !important; }
 
 /* Phones: lighter scene */
 @media (max-width: 800px) {
-    .planet-violet, .planet-ringed { display: none; }
-    .planet-blue { width: 96px; height: 96px; right: -40px; }
 }
 
 /* Reduced motion: no flying Scouts (JS), no moving planets or wave;
    a static, faint star field is all that remains */
 @media (prefers-reduced-motion: reduce) {
-    .space-wave, .planet, .far-scouts, .fly-layer { display: none; }
+    .space-wave, .planet-layer, .far-scouts, .fly-layer { display: none; }
+}
+
+
+/* =====================================================================
+   V2 — ROTATING PLANETS. 12 original designs (gradients + shadows only);
+   script.js shows 2–4 at a time in safe edge positions, lets each drift
+   for ~20–30 s, fades it out, then brings a DIFFERENT one in elsewhere.
+   ===================================================================== */
+
+.space-layer > .planet-layer { inset: 0; opacity: 1; z-index: 1; } /* above far Scouts */
+
+.cplanet {
+    position: absolute;
+    border-radius: 50%;
+    opacity: 0;
+    transition: opacity 3s ease;
+    animation: planetFloat var(--life, 30s) linear forwards;
+}
+
+.cplanet.show    { opacity: var(--op, 0.7); }
+.cplanet.leaving { opacity: 0; transition: opacity 3s ease; }
+.cplanet.quick   { transition-duration: 1s; }            /* leaving space mode */
+.cplanet.depth-far { filter: blur(0.6px); }
+
+@keyframes planetFloat {
+    from { transform: translate(0, 0); }
+    to   { transform: translate(var(--dx, 0px), var(--dy, 0px)); }
+}
+
+/* shared shading: lit from the upper-left, dark on the far side */
+.cplanet::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    box-shadow: inset -0.22em -0.16em 0.4em rgba(0, 0, 0, 0.65);
+    font-size: var(--size);
+}
+
+.p-ocean      { background: radial-gradient(circle at 34% 30%, #6c97ff 0%, #2149a8 40%, #0b1838 72%, #050a18 100%); box-shadow: 0 0 40px rgba(74, 140, 255, 0.16); }
+.p-icy        { background: radial-gradient(circle at 35% 30%, #f2f8ff 0%, #b9cde6 45%, #5d7290 82%); }
+.p-purple     { background: repeating-linear-gradient(168deg, rgba(255, 255, 255, 0.06) 0 5px, transparent 5px 13px), radial-gradient(circle at 40% 35%, #a184ff 0%, #4a2a9c 50%, #160c33 85%); }
+.p-dark       { background: radial-gradient(circle at 40% 40%, #121a2e 0%, #070b14 70%); box-shadow: 0 0 0 1.5px rgba(74, 168, 255, 0.35), 0 0 22px rgba(74, 168, 255, 0.3); }
+.p-orange     { background: radial-gradient(circle at 38% 32%, #ffb27a 0%, #b8562a 50%, #3a160a 88%); }
+.p-ringed     { background: radial-gradient(circle at 38% 32%, #6f8fe6 0%, #1c2f6b 55%, #070d24 90%); }
+.p-cyanmoon   { background: radial-gradient(circle at 35% 30%, #d5fcff 0%, #4fc3d9 50%, #0e3a47 92%); }
+.p-greymoon   { background: radial-gradient(circle at 62% 58%, rgba(0, 0, 0, 0.25) 0 8%, transparent 9%), radial-gradient(circle at 34% 64%, rgba(0, 0, 0, 0.22) 0 6%, transparent 7%), radial-gradient(circle at 48% 30%, rgba(0, 0, 0, 0.2) 0 5%, transparent 6%), radial-gradient(circle at 35% 30%, #e1e5eb 0%, #8a919c 52%, #2b2f36 92%); }
+.p-deeppurple { background: radial-gradient(circle at 36% 30%, #7a4fd6 0%, #2a1257 60%, #0c0620 92%); }
+.p-turquoise  { background: repeating-linear-gradient(172deg, rgba(255, 255, 255, 0.05) 0 4px, transparent 4px 11px), radial-gradient(circle at 36% 30%, #8ff5e0 0%, #1f9b8f 50%, #073b38 90%); }
+.p-red        { background: radial-gradient(circle at 36% 30%, #ff9a8a 0%, #a3302a 52%, #2e0b09 92%); }
+.p-eclipse    { background: #000; box-shadow: 0 0 0 1.5px rgba(127, 227, 255, 0.55), 0 0 22px 4px rgba(127, 227, 255, 0.22); }
+.p-eclipse::before { box-shadow: inset 0.12em -0.08em 0.25em rgba(127, 227, 255, 0.18); }
+
+/* the rare ringed planet: thin, softly lit blue-grey ring */
+.p-ringed::after {
+    content: "";
+    position: absolute;
+    left: -55%;
+    top: 36%;
+    width: 210%;
+    height: 28%;
+    border: 1px solid rgba(180, 205, 240, 0.5);
+    border-radius: 50%;
+    box-shadow: 0 0 6px rgba(127, 190, 255, 0.25);
+    transform: rotate(-14deg);
+}
+
+
+/* =====================================================================
+   V2 — SCOUT LOOKS AROUND. script.js sets --look-x / --look-y (eyes, a few
+   px at most, always inside the visor) and --tilt (whole robot, max 3°)
+   with requestAnimationFrame easing. Only the home Scout and, more
+   gently, the sidebar Scout react; flying Scouts don't.
+   ===================================================================== */
+
+.hero-icon svg { transform: rotate(var(--tilt, 0deg)); transform-origin: 50% 85%; }
+
+.hero-icon .robot-eyes,
+.hero-icon:hover .robot-eyes,
+.main.space-on .hero-icon .robot-eyes,
+.logo .robot-eyes {
+    transform: translate(var(--look-x, 0px), var(--look-y, 0px));
+    transition: none;
 }

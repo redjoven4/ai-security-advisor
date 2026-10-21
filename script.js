@@ -1896,6 +1896,8 @@ function initUI() {
     spaceOn = true;
     main.classList.add("space-on");
     scheduleScout(2400); // first Scout after the stars have appeared
+    startPlanets(); // planets drift in from ~1.8 s
+    if (Math.random() < 0.5) setTimeout(() => spaceOn && glanceAt(null, -1), 900); // Scout looks up at the wave
   }
 
   // Calm back to black: everything fades over ~1 s, the UI stays usable
@@ -1904,6 +1906,7 @@ function initUI() {
     spaceOn = false;
     main.classList.remove("space-on");
     clearTimeout(flyTimer);
+    stopPlanets();
     [...flyLayer.children, ...farScouts.children].forEach((bot) => bot.classList.add("leaving"));
     setTimeout(() => {
       if (spaceOn) return;
@@ -1952,9 +1955,9 @@ function initUI() {
   }
 
   // Launch one Scout on a path at a depth. Far Scouts fly BEHIND the planets.
-  function launch(path, depth = "mid") {
+  function launch(path, depth = "mid", forceY = null) {
     const size = Math.round(DEPTH_SIZE[depth] * (isPhone.matches ? 0.8 : 1));
-    const band = findEmptyBand(size);
+    const band = forceY === null ? findEmptyBand(size) : { y: forceY, h: 0, w: main.clientWidth };
     if (!band) return null; // no empty space: skip
     const bot = el("div", `mini-scout path-${path} depth-${depth}`);
     bot.style.setProperty("--fly-y", `${band.y}px`);
@@ -1990,7 +1993,12 @@ function initUI() {
     if (live < max) {
       flyCount++;
       const depth = ["far", "far", "mid", "mid", "near"][Math.floor(Math.random() * 5)];
-      if (!isPhone.matches && flyCount % 5 === 0 && live <= max - 2) {
+      const planet = [...planetLayer.children].find((p) => p.classList.contains("show"));
+      if (planet && Math.random() < 0.15) {
+        // rare: a far Scout flies BEHIND a planet and comes out the other side
+        const r = planet.getBoundingClientRect();
+        launch("across", "far", r.top - main.getBoundingClientRect().top + r.height / 2 - DEPTH_SIZE.far / 2);
+      } else if (!isPhone.matches && flyCount % 5 === 0 && live <= max - 2) {
         launch("across", "mid"); // rare: two Scouts cross paths
         launch("across-rev", "far");
       } else if (flyCount % 7 === 0) {
@@ -2002,6 +2010,174 @@ function initUI() {
       }
     }
     scheduleScout();
+  }
+
+  /* --- Planets: 12 designs, 2–4 visible, each replaced by a different one --- */
+  const planetLayer = $("planetLayer");
+  const PLANETS = [
+    { cls: "p-ocean", size: 70 }, { cls: "p-icy", size: 44 }, { cls: "p-purple", size: 88 },
+    { cls: "p-dark", size: 60 }, { cls: "p-orange", size: 32 }, { cls: "p-ringed", size: 38, rare: true },
+    { cls: "p-cyanmoon", size: 22 }, { cls: "p-greymoon", size: 28 }, { cls: "p-deeppurple", size: 56 },
+    { cls: "p-turquoise", size: 74 }, { cls: "p-red", size: 20 }, { cls: "p-eclipse", size: 50 },
+  ];
+  // Safe edge positions of the main area (content in the middle is avoided)
+  const SLOTS = [
+    { top: "6%", right: "-3%" }, { top: "5%", left: "3%" }, { top: "-4%", left: "26%" },
+    { top: "36%", right: "2%" }, { top: "28%", left: "2%" }, { bottom: "22%", left: "-2%" },
+    { bottom: "7%", right: "2%" }, { top: "60%", right: "-3%" },
+  ];
+  const DEPTHS = [ // scale, opacity, drift distance
+    { name: "far", scale: 0.55, op: 0.45, drift: 20 },
+    { name: "mid", scale: 1, op: 0.72, drift: 34 },
+    { name: "edge", scale: 1.9, op: 0.8, drift: 46 }, // rare: bigger, partly off-screen
+  ];
+  let planetTimer = null;
+  const recentDesigns = []; // so a planet that just left isn't the one that comes back
+  const recentSlots = [];
+
+  // Does this rectangle overlap real content (welcome, messages, composer…)?
+  function coversContent(rect) {
+    return [welcome, ...messages.children, form, $("emptyExtras"), $("privacyNote")]
+      .filter((n) => n && n.offsetParent !== null && !n.hidden)
+      .some((n) => {
+        const r = n.getBoundingClientRect();
+        return rect.left < r.right + 16 && rect.right > r.left - 16 && rect.top < r.bottom + 16 && rect.bottom > r.top - 16;
+      });
+  }
+
+  function spawnPlanet() {
+    if (!spaceOn || reduceMotion.matches) return;
+    const visible = [...planetLayer.children].filter((p) => !p.classList.contains("leaving"));
+    const used = visible.map((p) => p.dataset.design);
+    let choices = PLANETS.filter((p) => !used.includes(p.cls) && !recentDesigns.includes(p.cls) && (!p.rare || Math.random() < 0.3)); // ringed is rarer
+    if (!choices.length) return;
+    const design = choices[Math.floor(Math.random() * choices.length)];
+    const roll = Math.random();
+    const depth = roll < 0.5 ? DEPTHS[0] : roll < 0.9 ? DEPTHS[1] : DEPTHS[2];
+    const size = Math.round(design.size * depth.scale * (isPhone.matches ? 0.75 : 1));
+
+    // try the free safe slots in random order; skip if every one would cover content
+    const usedSlots = [...visible.map((p) => p.dataset.slot), ...recentSlots];
+    const slots = SLOTS.map((slot, i) => ({ slot, i })).filter(({ i }) => !usedSlots.includes(String(i))).sort(() => Math.random() - 0.5);
+    for (const { slot, i } of slots) {
+      const planet = el("div", `cplanet ${design.cls} depth-${depth.name}`);
+      Object.assign(planet.style, slot, { width: `${size}px`, height: `${size}px` });
+      const life = 20 + Math.random() * 12; // seconds visible
+      planet.style.setProperty("--size", `${size}px`);
+      planet.style.setProperty("--op", depth.op);
+      planet.style.setProperty("--life", `${life + 4}s`);
+      planet.style.setProperty("--dx", `${(slot.left !== undefined ? -1 : 1) * depth.drift}px`); // drifts toward its edge
+      planet.style.setProperty("--dy", `${(Math.random() - 0.5) * 24}px`);
+      planet.dataset.design = design.cls;
+      planet.dataset.slot = i;
+      planetLayer.appendChild(planet);
+      if (coversContent(planet.getBoundingClientRect())) {
+        planet.remove();
+        continue;
+      }
+      requestAnimationFrame(() => planet.classList.add("show")); // slow fade-in
+      if (Math.random() < 0.35) setTimeout(() => spaceOn && glanceAt(planet), 1200); // Scout notices it now and then
+      // after its life: drift on and fade out, then a different planet arrives elsewhere
+      setTimeout(() => {
+        planet.classList.add("leaving");
+        recentDesigns.push(design.cls);
+        recentSlots.push(String(i));
+        if (recentDesigns.length > 4) recentDesigns.shift();
+        if (recentSlots.length > 2) recentSlots.shift();
+        setTimeout(() => planet.remove(), 3100);
+        clearTimeout(planetTimer);
+        planetTimer = setTimeout(fillPlanets, 2000 + Math.random() * 4000);
+      }, life * 1000);
+      return;
+    }
+  }
+
+  // Keep 2–4 planets (1 on phones), adding them one at a time
+  function fillPlanets() {
+    if (!spaceOn) return;
+    const target = isPhone.matches ? 1 : 2 + (Math.random() < 0.6 ? 1 : 0) + (Math.random() < 0.1 ? 1 : 0);
+    const live = [...planetLayer.children].filter((p) => !p.classList.contains("leaving")).length;
+    if (live < target) {
+      spawnPlanet();
+      clearTimeout(planetTimer);
+      planetTimer = setTimeout(fillPlanets, 3000 + Math.random() * 3000);
+    }
+  }
+
+  function startPlanets() {
+    clearTimeout(planetTimer);
+    planetTimer = setTimeout(fillPlanets, 1800);
+  }
+
+  function stopPlanets() {
+    clearTimeout(planetTimer);
+    [...planetLayer.children].forEach((p) => p.classList.add("leaving", "quick"));
+    setTimeout(() => !spaceOn && planetLayer.replaceChildren(), 1100);
+  }
+
+  /* --- Scout looks around: eyes follow the mouse (home Scout fully, the
+         sidebar Scout gently), with a tiny head tilt. Eased with
+         requestAnimationFrame; returns to centre 3 s after the mouse stops.
+         Only on devices with a real mouse; off with reduced motion. --- */
+  const heroIcon = document.querySelector(".hero-icon");
+  const sideLogo = document.querySelector(".logo");
+  const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
+  const look = { x: 0, y: 0, tx: 0, ty: 0, raf: null };
+  let lookTimer = null;
+
+  function aimAt(clientX, clientY) {
+    const ref = welcome.hidden ? sideLogo : heroIcon;
+    const r = ref.getBoundingClientRect();
+    const dx = clientX - (r.left + r.width / 2);
+    const dy = clientY - (r.top + r.height * (ref === heroIcon ? 0.3 : 0.55));
+    const dist = Math.hypot(dx, dy) || 1;
+    const reach = Math.min(1, dist / 260); // close to Scout = smaller glance
+    look.tx = (dx / dist) * reach;
+    look.ty = (dy / dist) * reach;
+    if (!look.raf) look.raf = requestAnimationFrame(stepLook);
+  }
+
+  function lookCenter() {
+    look.tx = 0;
+    look.ty = 0;
+    if (!look.raf) look.raf = requestAnimationFrame(stepLook);
+  }
+
+  function stepLook() {
+    look.raf = null;
+    look.x += (look.tx - look.x) * 0.12;
+    look.y += (look.ty - look.y) * 0.12;
+    // eyes move at most ~2.4 px sideways / 1.8 px up-down: always inside the visor
+    heroIcon.style.setProperty("--look-x", `${(look.x * 2.4).toFixed(2)}px`);
+    heroIcon.style.setProperty("--look-y", `${(look.y * 1.8).toFixed(2)}px`);
+    heroIcon.style.setProperty("--tilt", `${(look.x * 3).toFixed(2)}deg`);
+    sideLogo.style.setProperty("--look-x", `${(look.x * 1.1).toFixed(2)}px`);
+    sideLogo.style.setProperty("--look-y", `${(look.y * 0.9).toFixed(2)}px`);
+    if (Math.abs(look.tx - look.x) > 0.002 || Math.abs(look.ty - look.y) > 0.002) look.raf = requestAnimationFrame(stepLook);
+  }
+
+  // The mouse always wins
+  document.addEventListener("pointermove", (event) => {
+    if (event.pointerType !== "mouse" || !finePointer.matches || reduceMotion.matches) return;
+    aimAt(event.clientX, event.clientY);
+    clearTimeout(lookTimer);
+    lookTimer = setTimeout(lookCenter, 3000);
+  }, { passive: true });
+
+  // In space mode Scout sometimes glances at something (a new planet, or up
+  // at the wave) — only while the mouse is still — then looks forward again.
+  function glanceAt(element, upward = 0) {
+    if (reduceMotion.matches || Date.now() - lastInput < 3000) return;
+    const ref = welcome.hidden ? sideLogo : heroIcon;
+    const r = ref.getBoundingClientRect();
+    if (element) {
+      const p = element.getBoundingClientRect();
+      aimAt(p.left + p.width / 2, p.top + p.height / 2);
+    } else {
+      aimAt(r.left + r.width / 2, r.top - 300 * -upward);
+    }
+    clearTimeout(lookTimer);
+    lookTimer = setTimeout(lookCenter, 1300);
   }
 
   // Handy for demos/testing: scoutSpace(true) turns space on; scoutFlyby("loop", "near")
