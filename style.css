@@ -1651,3 +1651,6 @@ body.testing-mode .test-only { display: revert !important; }
 .user-bubble.has-image { padding: 6px; }
 .user-attachment { display: block; max-width: 260px; max-height: 320px; border-radius: 12px; }
 .user-bubble.has-image p { padding: 6px 8px 4px; }
+
+/* V2: an image is being dragged over the composer */
+.composer-form.drag-over .composer { border-color: #7aa2ff; box-shadow: 0 0 0 3px rgba(122, 162, 255, 0.2); }

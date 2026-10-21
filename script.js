@@ -1560,29 +1560,77 @@ function initUI() {
     placeEmptyComposer();
   }
 
-  imageButton.addEventListener("click", () => imageInput.click());
-  imageInput.addEventListener("change", async () => {
-    const file = imageInput.files[0];
-    imageInput.value = ""; // allow choosing the same file again
-    if (!file || isAnalysing) return;
+  // ONE attachment pipeline for all three ways of adding a screenshot:
+  // the 📎 button, Cmd/Ctrl+V paste, and drag-and-drop.
+  const MAX_IMAGE_BYTES = 15 * 1024 * 1024; // before scaling down
+  let isAttaching = false;
+  async function attachImageFile(file, displayName) {
+    if (!file || isAnalysing || isAttaching) return;
+    if (attachedImage) {
+      errorBox.textContent = "Remove the current screenshot before adding another.";
+      return;
+    }
     if (!/^image\/(png|jpe?g|webp)$/.test(file.type)) {
       errorBox.textContent = "Please choose a PNG, JPG or WebP screenshot.";
       return;
     }
+    if (file.size > MAX_IMAGE_BYTES) {
+      errorBox.textContent = "That image is too large (max 15 MB).";
+      return;
+    }
+    isAttaching = true;
     try {
-      attachedImage = { dataUrl: await shrinkImage(file), name: file.name };
+      attachedImage = { dataUrl: await shrinkImage(file), name: displayName || file.name };
     } catch {
       errorBox.textContent = "That image couldn't be opened. Please try another screenshot.";
       return;
+    } finally {
+      isAttaching = false;
     }
     errorBox.textContent = "";
     $("imagePreview").src = attachedImage.dataUrl;
-    $("imageName").textContent = file.name;
+    $("imageName").textContent = `📎 ${attachedImage.name}`;
     imageAttachment.hidden = false;
     updateSendButton();
     placeEmptyComposer();
     messageInput.focus();
+  }
+
+  // 1. 📎 Add screenshot button
+  imageButton.addEventListener("click", () => imageInput.click());
+  imageInput.addEventListener("change", () => {
+    const file = imageInput.files[0];
+    imageInput.value = ""; // allow choosing the same file again
+    attachImageFile(file);
   });
+
+  // 2. Paste (Cmd/Ctrl+V) anywhere on the page. Only an IMAGE on the
+  //    clipboard is intercepted — pasting text works exactly as before.
+  document.addEventListener("paste", (event) => {
+    const items = [...(event.clipboardData?.items || [])];
+    const imageItem = items.find((item) => item.kind === "file" && item.type.startsWith("image/"));
+    if (!imageItem) return; // text (or nothing useful): normal paste
+    event.preventDefault();
+    attachImageFile(imageItem.getAsFile(), "Pasted screenshot");
+  });
+
+  // 3. Drag and drop an image onto the composer
+  const dropZone = form;
+  const hasImageFile = (event) => [...(event.dataTransfer?.items || [])].some((item) => item.kind === "file" && item.type.startsWith("image/"));
+  dropZone.addEventListener("dragover", (event) => {
+    if (!hasImageFile(event)) return;
+    event.preventDefault();
+    dropZone.classList.add("drag-over");
+  });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+  dropZone.addEventListener("drop", (event) => {
+    dropZone.classList.remove("drag-over");
+    const file = [...(event.dataTransfer?.files || [])].find((f) => f.type.startsWith("image/"));
+    if (!file) return;
+    event.preventDefault();
+    attachImageFile(file);
+  });
+
   $("removeImage").addEventListener("click", () => {
     clearAttachment();
     messageInput.focus();
