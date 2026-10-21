@@ -933,13 +933,13 @@ const TONE_CLASS = { green: "safe", amber: "verify", red: "danger" };
 // never checks websites, senders, accounts or databases.
 const LOADING_STEPS = [
   "Reading the message...",
-  "Checking the supplied evidence...",
+  "Looking at the supplied evidence...",
   "Considering what's uncertain...",
   "Preparing advice...",
 ];
-const LOADING_STEP_MS = 1400; // time each status line is shown
-const LOADING_MIN_MS = 1200; // shortest time the thinking state is shown
-const LOADING_FADE_MS = 200; // fade-out before the answer appears
+const LOADING_STEP_MS = 1600; // time each status line is shown
+const LOADING_MIN_MS = 600; // lets the first-message transition finish (the AI request starts immediately)
+const LOADING_FADE_MS = 220; // wave settles before the answer appears
 
 /* ---------- Small helpers ---------- */
 
@@ -1145,7 +1145,7 @@ function renderErrorCard(errorText, onRetry, onUseV0) {
   const icon = el("span", "decision-icon", "⚪");
   icon.setAttribute("aria-hidden", "true");
   decision.append(icon, el("span", null, "No decision was made"));
-  header.append(decision, el("p", "decision-meaning", `I couldn't finish this one. ${errorText}`));
+  header.append(decision, el("p", "decision-meaning", `Scout couldn't complete this analysis. ${errorText}`));
 
   const actions = el("div", "error-actions");
   const retry = el("button", "error-button", "↻ Retry");
@@ -1165,33 +1165,69 @@ function renderErrorCard(errorText, onRetry, onUseV0) {
 /* ---------- Rendering: loading + history ---------- */
 
 // "Analysing…" indicator with steps that tick off one by one
+// One flowing line of the wave: a smooth sine path that repeats every 150
+// units, drawn twice as wide as the box so sliding it left by half loops
+// seamlessly.
+function wavePath(amplitude) {
+  let d = `M0 16`;
+  for (let x = 0; x < 600; x += 75) {
+    const peak = (x / 75) % 2 === 0 ? 16 - amplitude * 2 : 16 + amplitude * 2;
+    d += ` Q${x + 37.5} ${peak} ${x + 75} 16`;
+  }
+  return d;
+}
+
+let waveCount = 0;
+
+// V2: Scout's thinking state — logo glow, "Scout" + a cycling status line,
+// and an original SVG wave. Shown only while the real request is running.
 function renderLoading() {
   const box = el("div", "analysis-loading");
   box.setAttribute("role", "status");
-  const title = el("div", "loading-title");
-  const dots = el("span", "typing-dots");
-  dots.append(el("span"), el("span"), el("span"));
+
+  const head = el("div", "thinking-head");
   const logo = el("span", "small-logo thinking-logo");
   logo.appendChild(scoutLogo());
   const status = el("span", "loading-status", LOADING_STEPS[0]);
-  title.append(logo, status, dots);
-  box.appendChild(title);
+  head.append(logo, document.createTextNode("Scout"), status);
+  box.appendChild(head);
 
-  // Cycle through the status lines, stopping on the last one
+  // Three thin lines: different amplitude, speed and direction
+  const wave = el("div", "scout-wave");
+  wave.setAttribute("aria-hidden", "true");
+  const gradientId = `scoutWave${++waveCount}`;
+  [[5, "w1"], [3.5, "w2"], [7, "w3"]].forEach(([amp, cls], n) => {
+    wave.insertAdjacentHTML(
+      "beforeend",
+      `<svg class="${cls}" viewBox="0 0 600 32" preserveAspectRatio="none">` +
+        (n === 0
+          ? `<defs><linearGradient id="${gradientId}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="600" y2="0">` +
+            `<stop offset="0" stop-color="#7aa2ff"/><stop offset="0.35" stop-color="#5fd4e8"/>` +
+            `<stop offset="0.65" stop-color="#a48bff"/><stop offset="1" stop-color="#7aa2ff"/></linearGradient></defs>`
+          : "") +
+        `<path d="${wavePath(amp)}" stroke="url(#${gradientId})"/></svg>`
+    );
+  });
+  box.appendChild(wave);
+
+  // Cycle the status line (fade up and out, new line fades in), stop on the last
   let step = 0;
   const timer = setInterval(() => {
-    step++;
-    if (step >= LOADING_STEPS.length) return clearInterval(timer);
-    status.textContent = LOADING_STEPS[step];
-    status.classList.remove("tick");
-    void status.offsetWidth; // restart the small fade-in animation
-    status.classList.add("tick");
+    if (++step >= LOADING_STEPS.length) return clearInterval(timer);
+    status.classList.add("out");
+    setTimeout(() => {
+      status.textContent = LOADING_STEPS[step];
+      status.classList.remove("out");
+      status.classList.add("enter");
+      void status.offsetWidth;
+      status.classList.remove("enter");
+    }, 220);
   }, LOADING_STEP_MS);
 
-  // Fade the thinking state out, then remove it
+  // Response (or error) arrived: the wave settles and fades, then is removed
   const finish = () => {
     clearInterval(timer);
-    box.classList.add("fade-out");
+    box.classList.add("settling");
     return new Promise((resolve) => setTimeout(() => (box.remove(), resolve()), LOADING_FADE_MS));
   };
   return { box, finish };
@@ -1249,6 +1285,7 @@ function initUI() {
         $("privacyNote").textContent = "Scout sends your message and background to an AI service (Claude) for analysis. It only evaluates the information you provide and cannot verify senders or websites.";
       }
     })
+    .then(() => placeEmptyComposer()) // the new wording can change the composer area's height
     .catch(() => {}); // no server (e.g. opened by double-click): keep the general wording
 
   let isAnalysing = false; // prevents accidental double submissions
@@ -1284,10 +1321,66 @@ function initUI() {
 
   // Remove everything from the visible conversation and show the welcome screen.
   // Saved history is NOT touched.
+  // V2: switch between the empty state (welcome + compact composer) and the
+  // active chat state. CSS animates the single composer between the two.
+  const main = $("main");
+  let welcomeTimer = null;
+  function setChatState(state) {
+    const active = state === "active";
+    if (active === main.classList.contains("chat-active")) return;
+    main.classList.toggle("chat-active", active);
+    main.classList.toggle("chat-empty", !active);
+    clearTimeout(welcomeTimer);
+    if (active) {
+      welcome.classList.add("leaving"); // fades upward…
+      welcomeTimer = setTimeout(() => (welcome.hidden = true), 350); // …then leaves the layout
+    } else {
+      welcome.hidden = false;
+      void welcome.offsetWidth;
+      welcome.classList.remove("leaving");
+      placeEmptyComposer(false); // suggestions are still expanding: use the settled height
+    }
+  }
+
+  // Empty state: place the compact composer just under the welcome text
+  // (works for any screen height; never moves it below its normal place).
+  // The area's height is measured only while the empty state is settled,
+  // and the background field's height is added on top when it's open.
+  const composerArea = document.querySelector(".composer-area");
+  let emptyBaseHeight = 0;
+  const backgroundHeight = () => (backgroundContainer.hidden ? 0 : backgroundContainer.offsetHeight + 8);
+  function placeEmptyComposer(measure = true) {
+    if (!main.classList.contains("chat-empty")) return;
+    if (measure || !emptyBaseHeight) emptyBaseHeight = composerArea.offsetHeight - backgroundHeight();
+    const finalTop = main.clientHeight - (emptyBaseHeight + backgroundHeight());
+    const target = welcome.offsetTop + welcome.offsetHeight + 24;
+    const padding = form.offsetTop; // composer area's top padding (smaller on phones)
+    main.style.setProperty("--empty-shift", `${Math.min(0, target - (finalTop + padding))}px`);
+  }
+  window.addEventListener("resize", placeEmptyComposer);
+  window.addEventListener("load", placeEmptyComposer); // after fonts/layout settle
+  if (document.fonts) document.fonts.ready.then(() => placeEmptyComposer()); // web font changes text height
+  placeEmptyComposer();
+
+  // New Analysis / Clear conversation: fade the conversation out, then reset
+  function resetToEmpty() {
+    if (!messages.children.length) return clearVisibleConversation();
+    messages.classList.add("fading");
+    setTimeout(() => {
+      messages.classList.remove("fading");
+      clearVisibleConversation();
+    }, 200);
+  }
+
+  // Is the user already looking at the bottom of the conversation?
+  function nearBottom() {
+    return chat.scrollHeight - chat.scrollTop - chat.clientHeight < 160;
+  }
+
   function clearVisibleConversation() {
     viewId++;
     messages.replaceChildren();
-    welcome.hidden = false;
+    setChatState("empty");
     setActiveHistory(null);
     updateClearButton();
   }
@@ -1295,12 +1388,14 @@ function initUI() {
   function openBackground() {
     backgroundContainer.hidden = false;
     backgroundButton.setAttribute("aria-expanded", "true");
+    if (typeof placeEmptyComposer === "function") placeEmptyComposer();
   }
 
   function closeBackground() {
     backgroundContainer.hidden = true;
     backgroundInput.value = "";
     backgroundButton.setAttribute("aria-expanded", "false");
+    if (typeof placeEmptyComposer === "function") placeEmptyComposer();
   }
 
   // Fill the composer with an example — the adviser still analyses it normally
@@ -1430,19 +1525,29 @@ function initUI() {
   }
 
   // Show one analysis on screen (used for new results and for history)
-  function displayEntry(entry) {
-    welcome.hidden = true;
+  // pendingRow = the user's bubble already shown while Scout was thinking
+  function displayEntry(entry, pendingRow) {
+    setChatState("active");
+    const follow = !pendingRow || nearBottom(); // don't yank the view if the user scrolled up
     const userRow = renderUserBubble(entry);
-    messages.append(userRow, renderResult(entry));
+    if (pendingRow) {
+      userRow.classList.add("no-anim"); // same bubble, now with highlights — no second entrance
+      pendingRow.replaceWith(userRow);
+    } else {
+      messages.append(userRow);
+    }
+    messages.append(renderResult(entry));
     setActiveHistory(entry.number);
     updateClearButton();
-    userRow.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (follow) userRow.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   // Clicking a history item loads that analysis: message, background,
   // decision, evidence, uncertainty, next step and testing details.
   function openHistoryEntry(entry) {
-    clearVisibleConversation();
+    // Straight to the active state — never via the welcome screen
+    viewId++;
+    messages.replaceChildren();
     displayEntry(entry);
     closeDrawerOnPhone();
   }
@@ -1481,13 +1586,26 @@ function initUI() {
   async function runAnalysis(message, background) {
     isAnalysing = true;
     updateSendButton();
-    welcome.hidden = true;
+    const firstMessage = main.classList.contains("chat-empty");
+    setChatState("active");
     const startedInView = viewId;
+    resetComposer(); // the message moves into the conversation straight away
 
-    // Show Scout's thinking state while waiting for the AI
+    // The user's message appears immediately; Scout's wave follows
+    const pendingRow = renderUserBubble({
+      number: analysisCounter + 1,
+      timestamp: new Date(),
+      result: { message: message.trim(), background: background.trim(), evidence: [] },
+    });
     const loading = renderLoading();
-    messages.appendChild(loading.box);
-    chat.scrollTop = chat.scrollHeight;
+    if (firstMessage) {
+      // let the welcome/composer transition lead
+      pendingRow.style.animationDelay = "250ms";
+      loading.box.style.animationDelay = "450ms";
+    }
+    messages.append(pendingRow, loading.box);
+    updateClearButton();
+    pendingRow.scrollIntoView({ behavior: "smooth", block: "start" });
     const minimumWait = new Promise((resolve) => setTimeout(resolve, LOADING_MIN_MS));
 
     let result = null;
@@ -1510,20 +1628,21 @@ function initUI() {
     }
 
     if (result) {
-      showResult(result);
+      showResult(result, pendingRow);
     } else {
-      // Keep the composer filled so the user can edit or resend.
+      // The wave has stopped; show the error card under the user's message.
       const card = renderErrorCard(
         failure.message,
         () => {
           if (isAnalysing) return;
           card.remove();
+          pendingRow.remove();
           runAnalysis(message, background);
         },
         () => {
           if (isAnalysing) return;
           card.remove();
-          showResult(analyseWithV0Rules(message, background));
+          showResult(analyseWithV0Rules(message, background), pendingRow);
         }
       );
       messages.appendChild(card);
@@ -1533,15 +1652,14 @@ function initUI() {
   }
 
   // Add a finished result to history and to the visible conversation.
-  function showResult(result) {
-    displayEntry(recordEntry(result));
-    resetComposer(); // ready for the next message
+  function showResult(result, pendingRow) {
+    displayEntry(recordEntry(result), pendingRow);
     messageInput.focus();
   }
 
   /* --- New analysis: fresh screen + empty composer (history is kept) --- */
   $("newAnalysis").addEventListener("click", () => {
-    clearVisibleConversation();
+    resetToEmpty();
     resetComposer();
     closeDrawerOnPhone();
     messageInput.focus();
@@ -1549,7 +1667,7 @@ function initUI() {
 
   /* --- Clear conversation: clears the screen only (history is kept) --- */
   clearButton.addEventListener("click", () => {
-    clearVisibleConversation();
+    resetToEmpty();
     closeDrawerOnPhone();
     messageInput.focus();
   });

@@ -1269,3 +1269,173 @@ body.testing-mode .testing-details {
     .decision-header,
     .result-content { padding-left: 16px; padding-right: 16px; }
 }
+
+
+/* =====================================================================
+   V2 — EMPTY ↔ ACTIVE CHAT STATES (one composer that changes layout)
+   .main.chat-empty  : welcome + compact composer near the centre
+   .main.chat-active : conversation + wider composer at the bottom
+   Layering: chat (base) → composer-area (z 2) → sidebar/overlay/dialog.
+   Decorative layers never take clicks (pointer-events: none).
+   ===================================================================== */
+
+.composer-area {
+    z-index: 2;
+    pointer-events: none; /* the fade strip itself is not clickable… */
+    transition: transform 0.55s cubic-bezier(0.22, 0.8, 0.25, 1);
+}
+
+.composer-area > * { pointer-events: auto; } /* …only its visible controls are */
+
+.composer-form { transition: max-width 0.5s cubic-bezier(0.22, 0.8, 0.25, 1); }
+
+.main.chat-empty .composer-area { transform: translateY(var(--empty-shift, -15vh)); } /* set by script.js */
+.main.chat-empty .composer-form { max-width: 680px; }
+.main.chat-active .composer-form { max-width: 800px; }
+
+/* Welcome: fades upward when the first message is sent */
+.welcome { transition: opacity 0.35s ease, transform 0.35s ease; }
+.welcome.leaving { opacity: 0; transform: translateY(-16px); pointer-events: none; }
+.main.chat-empty .welcome { margin-top: 10vh; }
+
+.welcome-name {
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    margin-bottom: 6px;
+}
+
+/* Suggestions + limits note under the compact composer; collapse smoothly */
+.empty-extras {
+    max-width: 680px;
+    max-height: 420px;
+    margin: 14px auto 0;
+    overflow: hidden;
+    transition: max-height 0.45s ease, margin 0.45s ease, opacity 0.25s ease, visibility 0s;
+}
+
+.empty-extras .suggestions { margin-top: 0; }
+
+.empty-extras .limitations {
+    margin: 14px auto 0;
+    max-width: 560px;
+    text-align: center;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-muted);
+}
+
+.main.chat-active .empty-extras {
+    max-height: 0;
+    margin-top: 0;
+    opacity: 0;
+    visibility: hidden;
+    transition: max-height 0.45s ease, margin 0.45s ease, opacity 0.2s ease, visibility 0s 0.45s;
+}
+
+/* New Analysis / Clear: conversation fades out before the reset */
+.messages { transition: opacity 0.2s ease; }
+.messages.fading { opacity: 0; }
+
+/* User message enters gently */
+.user-message { animation: msgIn 0.28s ease both; }
+.user-message.no-anim { animation: none; }
+
+@keyframes msgIn {
+    from { opacity: 0; transform: translateY(6px) scale(0.99); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* Staggered response reveal (fast; no typing effect) */
+.adviser-response { animation: msgIn 0.3s ease both; }
+.adviser-response .decision,
+.adviser-response .decision-meaning,
+.adviser-response .result-section { animation: msgIn 0.3s ease both; }
+.adviser-response .decision { animation-delay: 50ms; }
+.adviser-response .decision-meaning { animation-delay: 110ms; }
+.adviser-response .result-section:nth-child(1) { animation-delay: 170ms; }
+.adviser-response .result-section:nth-child(2) { animation-delay: 230ms; }
+.adviser-response .result-section:nth-child(3) { animation-delay: 290ms; }
+.adviser-response .result-section:nth-child(4) { animation-delay: 350ms; }
+
+
+/* =====================================================================
+   V2 — SCOUT WAVE (thinking state). Original SVG wave: three thin
+   flowing lines that drift at different speeds, bob slightly and pulse.
+   UI status only — not the AI's reasoning.
+   ===================================================================== */
+
+.thinking-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.thinking-head .small-logo { width: 24px; height: 24px; padding: 4px; flex-shrink: 0; }
+
+.thinking-logo { animation: scoutGlow 2.4s ease-in-out infinite; }
+
+@keyframes scoutGlow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(122, 162, 255, 0); }
+    50%      { box-shadow: 0 0 14px 2px rgba(122, 162, 255, 0.45); }
+}
+
+.loading-status {
+    display: inline-block;
+    color: var(--text-secondary);
+    font-weight: 500;
+    transition: opacity 0.22s ease, transform 0.22s ease, filter 0.22s ease;
+}
+
+.loading-status.out   { opacity: 0; transform: translateY(-3px); filter: blur(1px); }
+.loading-status.enter { opacity: 0; transform: translateY(3px); transition: none; }
+
+.scout-wave {
+    position: relative;
+    width: min(340px, 75%);
+    height: 32px;
+    margin: 6px 0 0 34px;
+    overflow: hidden;
+    pointer-events: none;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+    animation: waveBreathe 2.8s ease-in-out infinite;
+    transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.scout-wave svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 200%;
+    height: 100%;
+    animation: waveDrift linear infinite;
+}
+
+.scout-wave path { fill: none; stroke-linecap: round; animation: waveBob ease-in-out infinite alternate; }
+
+.scout-wave .w1 { animation-duration: 3.4s; }
+.scout-wave .w2 { animation-duration: 5.2s; animation-direction: reverse; }
+.scout-wave .w3 { animation-duration: 7.5s; }
+.scout-wave .w1 path { stroke-width: 2;   opacity: 0.95; animation-duration: 2.2s; }
+.scout-wave .w2 path { stroke-width: 1.5; opacity: 0.6;  animation-duration: 3.1s; }
+.scout-wave .w3 path { stroke-width: 1;   opacity: 0.4;  animation-duration: 2.6s; }
+
+@keyframes waveDrift  { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes waveBob    { from { transform: translateY(-2px); } to { transform: translateY(2px); } }
+@keyframes waveBreathe { 0%, 100% { opacity: 0.75; } 50% { opacity: 1; } }
+
+/* Response arrived: the wave settles and fades quickly */
+.analysis-loading.settling .scout-wave { opacity: 0; transform: scaleY(0.3); }
+.analysis-loading.settling .thinking-logo { animation: none; }
+.analysis-loading.settling .loading-status { opacity: 0; }
+
+@media (max-width: 800px) {
+    .main.chat-empty .welcome { margin-top: 5vh; }
+    .empty-extras .limitations { display: none; }
+    .empty-extras .suggestions button { padding: 10px 12px; }
+}

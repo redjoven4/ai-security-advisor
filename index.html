@@ -93,7 +93,8 @@
   <!-- =========================
        MAIN CHAT
   ========================== -->
-  <main class="main">
+  <!-- chat-empty = welcome + compact centred composer; chat-active = conversation + bottom composer -->
+  <main class="main chat-empty" id="main">
 
     <!-- Shown on phones, and on desktop when the sidebar is collapsed -->
     <header class="top-bar">
@@ -108,39 +109,11 @@
       <section id="welcome" class="welcome">
         <div class="hero-icon" aria-hidden="true"><svg><use href="#scout-logo"/></svg></div>
 
-        <h2>Analyse a suspicious message</h2>
-        <p>I'm Scout. Paste a message and I'll help you work out what the evidence actually supports.</p>
+        <p class="welcome-name">Scout</p>
+        <h2>What should I check?</h2>
+        <p>Paste a suspicious or ordinary message and I'll look at the evidence with you.</p>
 
-        <!-- These only FILL the composer; the adviser still analyses normally -->
-        <div class="suggestions">
-          <button data-example="7">
-            <span class="suggestion-icon" aria-hidden="true">🎮</span>
-            <div>
-              <strong>Gaming account message</strong>
-              <small>An account warning with a link</small>
-            </div>
-          </button>
-          <button data-example="3">
-            <span class="suggestion-icon" aria-hidden="true">♟</span>
-            <div>
-              <strong>Chess/club invitation</strong>
-              <small>A club update with a deadline</small>
-            </div>
-          </button>
-          <button data-example="0">
-            <span class="suggestion-icon" aria-hidden="true">💬</span>
-            <div>
-              <strong>Everyday message</strong>
-              <small>A normal message from a friend</small>
-            </div>
-          </button>
-        </div>
-
-        <p class="limitations">
-          I only judge the words you give me. I can't verify who sent a message, open or inspect links,
-          confirm real-world events, or guarantee that a message is safe or malicious. I never take actions for you.
-        </p>
-      </section>
+        </section>
 
       <!-- Analyses appear here -->
       <section id="messages" class="messages" aria-label="Conversation" aria-live="polite"></section>
@@ -176,6 +149,39 @@
 
         <p id="formError" class="form-error" role="alert"></p>
       </form>
+
+      <!-- Only shown in the empty state, under the compact composer -->
+      <div id="emptyExtras" class="empty-extras">
+        <!-- These only FILL the composer; the adviser still analyses normally -->
+        <div class="suggestions">
+          <button data-example="7">
+            <span class="suggestion-icon" aria-hidden="true">🎮</span>
+            <div>
+              <strong>Gaming account message</strong>
+              <small>An account warning with a link</small>
+            </div>
+          </button>
+          <button data-example="3">
+            <span class="suggestion-icon" aria-hidden="true">♟</span>
+            <div>
+              <strong>Chess/club invitation</strong>
+              <small>A club update with a deadline</small>
+            </div>
+          </button>
+          <button data-example="0">
+            <span class="suggestion-icon" aria-hidden="true">💬</span>
+            <div>
+              <strong>Everyday message</strong>
+              <small>A normal message from a friend</small>
+            </div>
+          </button>
+        </div>
+
+        <p class="limitations">
+          I only judge the words you give me. I can't verify who sent a message, open or inspect links,
+          confirm real-world events, or guarantee that a message is safe or malicious. I never take actions for you.
+        </p>
+      </div>
 
       <p class="privacy" id="privacyNote">
         Scout analyses your message and background with an AI model. It only evaluates the information you provide and cannot verify senders or websites.
