@@ -15,6 +15,8 @@ V1 testing (35 cases, local `qwen2.5:3b`) found two problems: the AI sometimes l
 - **Safety floor** (`server/safety-floor.mjs`): after the AI answers, the unchanged V0 rules check the message. If they find a request that is risky in itself (password, code, 2FA, account access or trade, remote access), the decision is raised to ⛔ Do not follow. The floor only ever raises a decision; everything else is the AI's answer. Testing Mode shows "Safety floor: applied" when it happens.
 - **Advice check** (`server/ai-service.mjs`): next steps that mention a friend, family, school, coach and so on that the message and background don't mention are removed.
 - **Evidence rules (prompt `scout-2.0`):** Scout sorts what it notices into A. direct evidence (stated in the message or background — the only thing allowed in Evidence), B. reasonable interpretation (only ever a "could/might"), and C. unknown (moved into Uncertainty, e.g. "I can't tell whether you were expecting this bill"). Conflicts with the background are stated as both sides, without calling the sender fake. The server also removes evidence that calls a sender suspicious, fake, impersonating, unexpected or genuine when the user never said so, checks field types, and never shows a question on a "Do not follow" answer.
+- **Screenshots:** "＋ Screenshot" reads the text from a PNG/JPG/WebP screenshot (`POST /api/read-image`, local model only). The text is put in the message box for you to check and correct, then analysed like typed text, so the quote checks and safety floor still apply. The image is not saved.
+- **Model:** default changed from `qwen2.5:3b` to `qwen2.5vl:7b`. On the 35 text cases: matched expected 26 → 27, missed risky requests 0 → 0, unnecessary warnings 5 → 2, but missed cautions (🟡 expected, got 🟢) 1 → 4; about 7.5 s per analysis instead of 4.4 s.
 - **Thinking animation:** while waiting for the AI, Scout's logo pulses and the status cycles through "Reading the message...", "Checking the supplied evidence...", "Considering what's uncertain...", "Preparing advice..." (UI status only — not the AI's reasoning).
 
 Results on the same 35 cases: missed risky requests 1 → 0; matched expected decision 25 → 26; unnecessary warnings 5 → 5; advice mentioning people not in the input 20 → 8.
@@ -23,11 +25,11 @@ Results on the same 35 cases: missed risky requests 1 → 0; matched expected de
 
 ### How to run V1
 V1 can use either of two AI engines, set by `AI_PROVIDER` in `.env`:
-- **`ollama` (default, free):** a small open-source model (`qwen2.5:3b`) running on your own computer through the [Ollama](https://ollama.com) app. No API key, no cost, and nothing is sent online.
+- **`ollama` (default, free):** a small open-source vision model (`qwen2.5vl:7b`, reads text and screenshots) running on your own computer through the [Ollama](https://ollama.com) app. No API key, no cost, and nothing is sent online.
 - **`claude`:** Anthropic's Claude API. It's more capable, but needs an API key and credits.
 
 1. Install [Node.js](https://nodejs.org) 20.12 or newer, then run `npm install` once in this folder.
-2. **Free local AI:** install and open the Ollama app, then run `ollama pull qwen2.5:3b` once (1.9 GB).
+2. **Free local AI:** install and open the Ollama app, then run `ollama pull qwen2.5vl:7b` once (6 GB). The smaller text-only `qwen2.5:3b` also works (set `OLLAMA_MODEL` in `.env`), but without screenshot reading.
    **Or Claude:** copy `.env.example` to `.env`, set `AI_PROVIDER=claude` and add your `ANTHROPIC_API_KEY`.
 3. Run `npm start`, then open **http://localhost:8080** (V0 is also at http://localhost:8080/v0/).
 

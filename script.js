@@ -1323,6 +1323,7 @@ function initUI() {
 
   // Empty the message box and the background field
   function resetComposer() {
+    hideImageNotice();
     messageInput.value = "";
     closeBackground();
     errorBox.textContent = "";
@@ -1349,24 +1350,32 @@ function initUI() {
       welcome.hidden = false;
       void welcome.offsetWidth;
       welcome.classList.remove("leaving");
-      placeEmptyComposer(false); // suggestions are still expanding: use the settled height
+      placeEmptyComposer();
     }
   }
 
   // Empty state: place the compact composer just under the welcome text
   // (works for any screen height; never moves it below its normal place).
-  // The area's height is measured only while the empty state is settled,
-  // and the background field's height is added on top when it's open.
+  // Everything is measured live; the suggestions area may still be
+  // expanding, so its FINAL height is used instead of its current one.
   const composerArea = document.querySelector(".composer-area");
-  let emptyBaseHeight = 0;
-  const backgroundHeight = () => (backgroundContainer.hidden ? 0 : backgroundContainer.offsetHeight + 8);
-  function placeEmptyComposer(measure = true) {
+  const EXTRAS_MARGIN = 14; // .empty-extras margin-top in the empty state
+  let extrasFull = 0; // full height of the suggestions area (remembered while visible)
+  function placeEmptyComposer() {
     if (!main.classList.contains("chat-empty")) return;
-    if (measure || !emptyBaseHeight) emptyBaseHeight = composerArea.offsetHeight - backgroundHeight();
-    const finalTop = main.clientHeight - (emptyBaseHeight + backgroundHeight());
-    const target = welcome.offsetTop + welcome.offsetHeight + 24;
+    const extras = $("emptyExtras");
+    if (extras.scrollHeight) extrasFull = extras.scrollHeight + EXTRAS_MARGIN;
+    const extrasNow = extras.offsetHeight + parseFloat(getComputedStyle(extras).marginTop);
+    const baseHeight = composerArea.offsetHeight - extrasNow; // composer area without the suggestions
     const padding = form.offsetTop; // composer area's top padding (smaller on phones)
-    main.style.setProperty("--empty-shift", `${Math.min(0, target - (finalTop + padding))}px`);
+    const shiftFor = (height) => welcome.offsetTop + welcome.offsetHeight + 24 - (main.clientHeight - height + padding);
+
+    // Short window or tall composer (background open, long text)? Hide the
+    // suggestions for now so the composer never covers the welcome text.
+    const noRoom = shiftFor(baseHeight + extrasFull) > 0;
+    main.classList.toggle("no-room", noRoom);
+    const shift = shiftFor(baseHeight + (noRoom ? 0 : extrasFull));
+    main.style.setProperty("--empty-shift", `${Math.min(0, shift)}px`);
   }
   window.addEventListener("resize", placeEmptyComposer);
   window.addEventListener("load", placeEmptyComposer); // after fonts/layout settle
@@ -1504,10 +1513,73 @@ function initUI() {
     messageInput.focus();
   });
 
+  /* --- V2: screenshot → text. Scout only READS the text here; you check and
+         correct it, then it is analysed like any typed message. The image is
+         not saved anywhere. --- */
+  const imageInput = $("imageInput");
+  const imageButton = $("imageButton");
+  const imageNotice = $("imageNotice");
+  let isReadingImage = false;
+
+  function showImageNotice(text, kind) {
+    imageNotice.textContent = text;
+    imageNotice.className = `image-notice ${kind}`;
+    imageNotice.hidden = false;
+    placeEmptyComposer();
+  }
+
+  function hideImageNotice() {
+    if (imageNotice.hidden) return;
+    imageNotice.hidden = true;
+    placeEmptyComposer();
+  }
+
+  // Large phone screenshots are scaled down (max 1600px) before sending
+  async function shrinkImage(file) {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/png");
+  }
+
+  imageButton.addEventListener("click", () => imageInput.click());
+  imageInput.addEventListener("change", async () => {
+    const file = imageInput.files[0];
+    imageInput.value = ""; // allow choosing the same file again
+    if (!file || isReadingImage || isAnalysing) return;
+    if (!/^image\/(png|jpe?g|webp)$/.test(file.type)) return showImageNotice("Please choose a PNG, JPG or WebP screenshot.", "error");
+
+    isReadingImage = true;
+    imageButton.disabled = true;
+    showImageNotice(`Reading the text in "${file.name}"…`, "busy");
+    try {
+      const response = await fetch("/api/read-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: await shrinkImage(file) }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.text) throw new Error(data?.error || "Scout couldn't read that screenshot.");
+      messageInput.value = data.text;
+      messageInput.dispatchEvent(new Event("input"));
+      showImageNotice("Here's the text I read from your screenshot. Check it and fix anything I misread, then send.", "ok");
+      messageInput.focus();
+    } catch (error) {
+      showImageNotice(error instanceof TypeError ? "Could not reach the adviser's server. Is it running (npm start)?" : error.message, "error");
+    } finally {
+      isReadingImage = false;
+      imageButton.disabled = false;
+    }
+  });
+
   /* --- Typing in the composer --- */
   messageInput.addEventListener("input", () => {
     updateSendButton();
     autoResize(messageInput);
+    placeEmptyComposer(); // a growing message box must not push into the welcome text
     if (messageInput.value.trim()) errorBox.textContent = "";
   });
 

@@ -25,7 +25,7 @@ try {
   // no .env file — the AI will report that it isn't configured
 }
 
-const { analyse, aiConfigured, AnalysisError, AI_PROVIDER, MODEL, PROMPT_VERSION, MAX_MESSAGE_CHARS, MAX_BACKGROUND_CHARS } = await import("./ai-service.mjs");
+const { analyse, readImageText, aiConfigured, AnalysisError, AI_PROVIDER, MODEL, PROMPT_VERSION, MAX_MESSAGE_CHARS, MAX_BACKGROUND_CHARS } = await import("./ai-service.mjs");
 const db = await import("./db.mjs");
 const { applySafetyFloor } = await import("./safety-floor.mjs"); // V2
 
@@ -63,13 +63,13 @@ function sendJson(res, status, body) {
 }
 
 // Read a JSON request body (max 20 KB).
-function readJson(req) {
+function readJson(req, maxBytes = 20_000) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
     req.on("data", (chunk) => {
       size += chunk.length;
-      if (size > 20_000) {
+      if (size > maxBytes) {
         reject(new AnalysisError(413, "The message is too long."));
         req.destroy();
       } else chunks.push(chunk);
@@ -118,6 +118,29 @@ async function handleAnalyse(req, res) {
   }
 }
 
+/* ---------- POST /api/read-image (V2: screenshot → text) ---------- */
+// Only returns the text found in the screenshot. The image is not saved.
+async function handleReadImage(req, res) {
+  const started = Date.now();
+  try {
+    if (rateLimited(req.socket.remoteAddress)) throw new AnalysisError(429, "Too many requests in a short time. Please wait a minute.");
+    const body = await readJson(req, 12_000_000); // screenshots are larger than text
+    const match = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(body.image || "");
+    if (!match) throw new AnalysisError(400, "Please choose a PNG, JPG or WebP screenshot.");
+    const text = await readImageText(match[2]);
+    console.log(`[read-image] ${text.length} chars in ${Date.now() - started}ms`);
+    sendJson(res, 200, { text });
+  } catch (error) {
+    if (error instanceof AnalysisError) {
+      console.warn(`[read-image] failed (${error.status}): ${error.logDetail}`);
+      sendJson(res, error.status, { error: error.message });
+    } else {
+      console.error("[read-image] unexpected error:", error);
+      sendJson(res, 500, { error: "Something went wrong on the server. Please try again." });
+    }
+  }
+}
+
 /* ---------- /api/history (ready for your database) ---------- */
 async function handleHistory(req, res) {
   if (req.method === "GET") {
@@ -149,6 +172,9 @@ const server = http.createServer(async (req, res) => {
     return req.method === "POST" ? handleAnalyse(req, res) : sendJson(res, 405, { error: "Use POST." });
   }
   if (url.pathname === "/api/history") return handleHistory(req, res);
+  if (url.pathname === "/api/read-image") {
+    return req.method === "POST" ? handleReadImage(req, res) : sendJson(res, 405, { error: "Use POST." });
+  }
   if (url.pathname === "/api/health") {
     // Says WHETHER a key is set — never the key itself.
     return sendJson(res, 200, { ok: true, version: "V2", provider: AI_PROVIDER, aiConfigured: aiConfigured(), model: MODEL, promptVersion: PROMPT_VERSION, database: db.databaseConfigured() });

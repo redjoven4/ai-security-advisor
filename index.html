@@ -142,14 +142,21 @@
             placeholder="e.g. I wasn't trying to log in and I don't know this person."></textarea>
         </div>
 
+        <p id="imageNotice" class="image-notice" role="status" hidden></p>
+
         <div class="composer">
           <label for="messageInput" class="visually-hidden">Message to analyse (required)</label>
           <textarea id="messageInput" rows="2" placeholder="Paste a message to analyse…"></textarea>
 
           <div class="composer-bottom">
-            <button type="button" id="backgroundButton" class="background-button" aria-expanded="false" aria-controls="backgroundContainer">
+            <div class="composer-tools">
+              <button type="button" id="backgroundButton" class="background-button" aria-expanded="false" aria-controls="backgroundContainer">
               ＋ Add background
             </button>
+              <!-- V2: read the text from a screenshot (you check it before sending) -->
+              <button type="button" id="imageButton" class="background-button" title="Read the text from a screenshot">＋ Screenshot</button>
+              <input type="file" id="imageInput" accept="image/png,image/jpeg,image/webp" class="visually-hidden" tabindex="-1" aria-hidden="true">
+            </div>
             <button type="submit" id="sendButton" class="send-button" disabled aria-label="Analyse message" title="Analyse message (Enter)">↑</button>
           </div>
         </div>

@@ -1605,3 +1605,27 @@ body.testing-mode .test-only { display: revert !important; }
     .analysis-loading .scout-wave,
     .thinking-status { margin-left: 0; }
 }
+
+
+/* V2: screenshot button + the note shown after reading a screenshot */
+.composer-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.background-button:disabled { opacity: 0.5; cursor: default; }
+
+.image-notice {
+    margin: 0 0 8px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: 12.5px;
+    line-height: 1.45;
+}
+
+.image-notice.busy  { animation: waveBreathe 1.4s ease-in-out infinite; }
+.image-notice.ok    { border-color: rgba(122, 162, 255, 0.35); color: var(--text); }
+.image-notice.error { border-color: rgba(251, 113, 133, 0.4); color: var(--red); }
+
+/* Not enough height for the suggestions under the welcome: hide them for now */
+.main.chat-empty.no-room .empty-extras { display: none; }
+.main.chat-empty.no-room .welcome { margin-top: 3vh; }
