@@ -99,7 +99,7 @@ async function handleAnalyse(req, res) {
     let image = null;
     if (body.image) {
       const match = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(body.image);
-      if (!match) throw new AnalysisError(400, "Please choose a PNG, JPG or WebP screenshot.");
+      if (!match) throw new AnalysisError(400, "Please choose a PNG, JPG or WebP screenshot.", "bad image data URL", "Image payload rejected");
       image = match[2];
     }
 
@@ -121,7 +121,7 @@ async function handleAnalyse(req, res) {
   } catch (error) {
     if (error instanceof AnalysisError) {
       console.warn(`[analyse] failed (${error.status}): ${error.logDetail}`);
-      sendJson(res, error.status, { error: error.message });
+      sendJson(res, error.status, { error: error.message, reason: error.reason }); // reason: Testing Mode only
     } else {
       console.error("[analyse] unexpected error:", error);
       sendJson(res, 500, { error: "Something went wrong on the server. Please try again." });

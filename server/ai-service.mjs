@@ -28,6 +28,10 @@ export const AI_PROVIDER = (process.env.AI_PROVIDER || "ollama").toLowerCase();
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 // qwen2.5vl:7b reads text messages AND screenshots (vision model)
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "qwen2.5vl:7b";
+// Context window (prompt + image + answer, in tokens). Ollama's default is
+// 4096, which a real phone screenshot plus Scout's instructions overflows.
+const OLLAMA_CTX_TEXT = Number(process.env.OLLAMA_CTX_TEXT) || 8192;
+const OLLAMA_CTX_IMAGE = Number(process.env.OLLAMA_CTX_IMAGE) || 16384;
 
 // Claude settings (AI_PROVIDER=claude)
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || "claude-opus-5-5";
@@ -176,10 +180,12 @@ const SCREENSHOT_SCHEMA = {
 
 // An error whose message is safe to show the user, plus an HTTP status.
 export class AnalysisError extends Error {
-  constructor(status, userMessage, logDetail) {
+  // reason = short technical label, shown only in Testing Mode
+  constructor(status, userMessage, logDetail, reason) {
     super(userMessage);
     this.status = status;
     this.logDetail = logDetail || userMessage;
+    this.reason = reason || null;
   }
 }
 
@@ -255,10 +261,10 @@ export function validateAndConvert(ai, message, background, screenshotText = "")
   if (!ai || typeof ai !== "object") throw new AnalysisError(502, "The AI returned an unreadable answer. Please try again.");
   // V2: basic type checks — malformed model output becomes a clear error card, never a crash
   if (!Array.isArray(ai.evidence) || !Array.isArray(ai.uncertainty) || !Array.isArray(ai.safe_next_steps)) {
-    throw new AnalysisError(502, "The AI's answer was in the wrong format. Please try again.", "wrong field types");
+    throw new AnalysisError(502, "The AI's answer was in the wrong format. Please try again.", "wrong field types", "Structured response validation failed");
   }
   if (!DECISION_CODES.includes(ai.decision)) {
-    throw new AnalysisError(502, "The AI returned an invalid decision. Please try again.", `bad decision: ${ai.decision}`);
+    throw new AnalysisError(502, "The AI returned an invalid decision. Please try again.", `bad decision: ${ai.decision}`, "Structured response validation failed");
   }
 
   const checks = [];
@@ -322,7 +328,7 @@ export function validateAndConvert(ai, message, background, screenshotText = "")
 
   // Every analysis MUST contain these sections.
   if (!evidence.length || !uncertainty.length || !safeNextStep.length) {
-    throw new AnalysisError(502, "The AI's answer was missing a required section. Please try again.", "incomplete sections");
+    throw new AnalysisError(502, "The AI's answer was missing a required section. Please try again.", "incomplete sections", "Structured response validation failed");
   }
 
   const riskFactors = cleanStringList(ai.risk_factors, 12)
@@ -377,7 +383,8 @@ export async function analyseWithOllama(message, background, imageBase64 = null)
         model: OLLAMA_MODEL,
         stream: false,
         format: imageBase64 ? SCREENSHOT_SCHEMA : RESPONSE_SCHEMA, // the model must reply in exactly this JSON shape
-        options: { temperature: 0 }, // as consistent as possible between runs
+        // temperature 0 = as consistent as possible; num_ctx = room for prompt + image + answer
+        options: { temperature: 0, num_ctx: imageBase64 ? OLLAMA_CTX_IMAGE : OLLAMA_CTX_TEXT },
         messages: [
           { role: "system", content: imageBase64 ? SYSTEM_PROMPT + SCREENSHOT_ADDENDUM : SYSTEM_PROMPT },
           // Sent as JSON so text inside the message can't pretend to be instructions.
@@ -389,23 +396,33 @@ export async function analyseWithOllama(message, background, imageBase64 = null)
       signal: AbortSignal.timeout(120_000),
     });
   } catch (error) {
-    if (error.name === "TimeoutError") throw new AnalysisError(504, "The local AI took too long to answer. Please try again.", "ollama timeout");
-    throw new AnalysisError(503, "The local AI isn't running. Open the Ollama app, then try again.", error.message);
+    if (error.name === "TimeoutError") throw new AnalysisError(504, "The local AI took too long to answer. Please try again.", "ollama timeout", "Ollama timed out");
+    throw new AnalysisError(503, "The local AI isn't running. Open the Ollama app, then try again.", error.message, "Ollama connection failed");
   }
 
   if (response.status === 404) {
-    throw new AnalysisError(503, `The local AI model "${OLLAMA_MODEL}" isn't downloaded yet. In a terminal run: ollama pull ${OLLAMA_MODEL}`, "model not found");
+    throw new AnalysisError(503, `The local AI model "${OLLAMA_MODEL}" isn't downloaded yet. In a terminal run: ollama pull ${OLLAMA_MODEL}`, "model not found", `Model not installed: ${OLLAMA_MODEL}`);
   }
   if (!response.ok) {
-    throw new AnalysisError(502, "The local AI had a problem. Please try again.", `ollama ${response.status} ${await response.text()}`);
+    const detail = await response.text();
+    const reason = /context size/i.test(detail)
+      ? "Request too large for the model's context window"
+      : /image|vision/i.test(detail)
+        ? "Vision model unavailable (model can't read images)"
+        : `Ollama error (HTTP ${response.status})`;
+    throw new AnalysisError(502, "The local AI had a problem. Please try again.", `ollama ${response.status} ${detail}`, reason);
   }
 
   const data = await response.json();
+  // Development log: why the model stopped and how big the request was
+  console.log(`[ollama] ${OLLAMA_MODEL}${imageBase64 ? " +image" : ""} done=${data.done_reason} prompt_tokens=${data.prompt_eval_count} answer_tokens=${data.eval_count}`);
   let parsed;
   try {
     parsed = JSON.parse(data.message?.content || "");
   } catch {
-    throw new AnalysisError(502, "The local AI returned an unreadable answer. Please try again.", "invalid JSON from ollama");
+    console.warn(`[ollama] raw answer that wasn't valid JSON (first 600 chars):\n${String(data.message?.content).slice(0, 600)}`);
+    const cutOff = data.done_reason === "length";
+    throw new AnalysisError(502, "The local AI returned an unreadable answer. Please try again.", "invalid JSON from ollama", cutOff ? "Invalid model response (answer was cut off)" : "Invalid model response (not JSON)");
   }
   if (!imageBase64) return validateAndConvert(parsed, message, background);
   const screenshotText = typeof parsed.screenshot_text === "string" ? parsed.screenshot_text.trim() : "";
