@@ -993,34 +993,44 @@ function formatTime(date) {
 function renderUserBubble(entry) {
   const row = el("div", "user-message");
   row.id = `analysis-${entry.number}`;
-  const bubble = el("article", "user-bubble");
-  bubble.setAttribute("aria-label", `Your message, analysis ${entry.number}`);
 
-  bubble.appendChild(el("div", "bubble-label", "Message"));
+  // The message itself: a chat bubble that is only as wide as its text
+  const bubble = el("article", "user-bubble");
+  bubble.setAttribute("aria-label", "Your message");
   const msg = el("p");
   // Highlight message phrases that triggered important rules
   const phrases = entry.result.evidence.filter((e) => e.from === "message").map((e) => e.highlight);
   setHighlightedText(msg, entry.result.message, phrases);
   bubble.appendChild(msg);
-
-  bubble.appendChild(el("div", "bubble-divider"));
-  bubble.appendChild(el("div", "bubble-label", "Known background"));
-  bubble.appendChild(el("p", entry.result.background ? null : "bubble-muted", entry.result.background || "None supplied"));
-
-  bubble.appendChild(el("div", "bubble-meta", `#${entry.number} · ${formatTime(entry.timestamp)}`));
   row.appendChild(bubble);
+
+  // Background is the user's own note, not part of the message: shown quieter, underneath
+  if (entry.result.background) {
+    const bg = el("div", "user-background");
+    bg.append(el("span", "user-background-label", "Background"), el("p", null, entry.result.background));
+    row.appendChild(bg);
+  } else {
+    row.appendChild(el("div", "user-background test-only", "No background supplied"));
+  }
+
+  // Small timestamp; the analysis number only shows in Testing Mode
+  const time = el("div", "msg-time");
+  time.append(el("span", "test-only", `#${entry.number} · `), document.createTextNode(formatTime(entry.timestamp)));
+  row.appendChild(time);
   return row;
 }
 
 /* ---------- Rendering: adviser result card ---------- */
 
-// One titled section inside the result card
-function renderSection(icon, title) {
+// One titled section inside Scout's analysis bubble. `official` is the
+// project's required section name, kept visible beside the friendly title.
+function renderSection(icon, title, official) {
   const section = el("section", "result-section");
   const h = el("h4");
   const iconSpan = el("span", null, icon);
   iconSpan.setAttribute("aria-hidden", "true");
   h.append(iconSpan, document.createTextNode(title));
+  if (official) h.appendChild(el("span", "section-official", ` · ${official}`));
   section.appendChild(h);
   return section;
 }
@@ -1032,31 +1042,29 @@ function renderResult(entry) {
 
   const wrapper = el("div", "adviser-response");
 
-  // Name row
+  // One Scout message group: avatar + name once, then the reply bubbles
   const name = el("div", "adviser-name");
-  const logo = el("div", "small-logo");
+  const logo = el("div", "small-logo scout-avatar");
   logo.appendChild(scoutLogo());
-  name.append(logo, document.createTextNode("Scout"), el("span", "bubble-meta-inline", `#${entry.number} · ${r.version}`));
+  name.append(logo, document.createTextNode("Scout"), el("span", "bubble-meta-inline test-only", `#${entry.number} · ${r.version}`));
   wrapper.appendChild(name);
+  const group = el("div", "scout-bubbles");
 
-  const card = el("article", `result-card ${TONE_CLASS[d.tone]}`);
-  card.setAttribute("aria-label", `Scout's result ${entry.number}: ${d.label}`);
-
-  // 1. DECISION — icon + text, colour is only an accent
-  const header = el("div", "decision-header");
-  header.appendChild(el("div", "decision-label", "DECISION"));
-  const decision = el("div", "decision");
+  // Bubble 1 — DECISION: the official decision as a compact chip + Scout's reply
+  const card = el("article", `result-card scout-bubble main-bubble ${TONE_CLASS[d.tone]}`);
+  card.setAttribute("aria-label", `Scout's decision: ${d.label}`);
+  const decision = el("div", "decision decision-chip");
   const icon = el("span", "decision-icon", d.icon);
   icon.setAttribute("aria-hidden", "true");
   decision.append(icon, el("span", null, d.label));
-  header.append(decision, el("p", "decision-meaning", d.meaning));
-  card.appendChild(header);
+  card.append(decision, el("p", "decision-meaning", d.meaning));
+  group.appendChild(card);
 
-  const content = el("div", "result-content");
+  // Bubble 2 — the structured analysis (always visible)
+  const content = el("div", "result-content scout-bubble details-bubble");
 
   // 2. EVIDENCE
-  const ev = renderSection("🔎", "Evidence");
-  ev.appendChild(el("p", "section-lead", "Here's what stands out:"));
+  const ev = renderSection("🔎", "What I noticed", "Evidence");
   const evList = el("ul", "result-list");
   r.evidence.forEach((item) => {
     const li = el("li", null, item.text);
@@ -1071,8 +1079,7 @@ function renderResult(entry) {
   content.appendChild(ev);
 
   // 3. UNCERTAINTY (+ one question that could change the advice)
-  const un = renderSection("❓", "Uncertainty");
-  un.appendChild(el("p", "section-lead", "What I can't tell from this:"));
+  const un = renderSection("❓", "What I can't tell", "Uncertainty");
   const unList = el("ul", "result-list");
   r.uncertainty.forEach((t) => unList.appendChild(el("li", null, t)));
   un.appendChild(unList);
@@ -1084,8 +1091,7 @@ function renderResult(entry) {
   content.appendChild(un);
 
   // 4. SAFE NEXT STEP
-  const next = renderSection("🛡", "Safe next step");
-  next.appendChild(el("p", "section-lead", "What I'd do:"));
+  const next = renderSection("→", "What I'd do next", "Safe next step");
   const nextList = el("ul", "result-list steps-list");
   r.safeNextStep.forEach((t) => nextList.appendChild(el("li", null, t)));
   next.appendChild(nextList);
@@ -1123,8 +1129,8 @@ function renderResult(entry) {
   if (r.checks && r.checks.length) addTestLine("Checks:", r.checks);
   content.appendChild(test);
 
-  card.appendChild(content);
-  wrapper.appendChild(card);
+  group.appendChild(content);
+  wrapper.append(group, el("div", "msg-time", formatTime(entry.timestamp)));
   return wrapper;
 }
 
@@ -1191,7 +1197,7 @@ function renderLoading() {
   const logo = el("span", "small-logo thinking-logo");
   logo.appendChild(scoutLogo());
   const status = el("span", "loading-status", LOADING_STEPS[0]);
-  head.append(logo, document.createTextNode("Scout"), status);
+  head.append(logo, document.createTextNode("Scout"));
   box.appendChild(head);
 
   // Three thin lines: different amplitude, speed and direction
@@ -1211,6 +1217,9 @@ function renderLoading() {
     );
   });
   box.appendChild(wave);
+  const statusLine = el("div", "thinking-status");
+  statusLine.appendChild(status);
+  box.appendChild(statusLine);
 
   // Cycle the status line (fade up and out, new line fades in), stop on the last
   let step = 0;

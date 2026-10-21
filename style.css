@@ -1476,3 +1476,132 @@ body.testing-mode .testing-details {
 /* Response arrived: the robot returns to normal */
 .analysis-loading.settling .robot-eyes,
 .analysis-loading.settling .robot-antenna-tip { animation: none; }
+
+
+/* =====================================================================
+   V2 — MESSAGING LAYOUT (Scout's own chat style, existing palette)
+   User: compact right-aligned bubble, quiet background note, timestamp.
+   Scout: avatar + name once, a reply bubble with a decision chip, then
+   the analysis bubble. Technical extras only appear in Testing Mode.
+   ===================================================================== */
+
+.test-only { display: none !important; }
+body.testing-mode .test-only { display: revert !important; }
+
+/* --- User --- */
+.user-message {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    margin-bottom: 22px;
+}
+
+.user-bubble {
+    width: fit-content;
+    max-width: 65%;
+    padding: 10px 14px;
+    border-radius: 18px 18px 6px 18px;
+    background: #1f2530;
+    border: 1px solid var(--border-light);
+    font-size: 14.5px;
+    line-height: 1.5;
+}
+
+.user-bubble p { white-space: pre-wrap; }
+
+.user-background {
+    max-width: 65%;
+    padding: 2px 4px;
+    text-align: right;
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--text-secondary);
+}
+
+.user-background-label { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.user-background p { margin-top: 1px; white-space: pre-wrap; }
+
+.msg-time { padding: 0 4px; font-size: 11px; color: var(--text-muted); }
+
+/* --- Scout --- */
+.adviser-name { margin-bottom: 8px; }
+.scout-avatar { width: 30px; height: 30px; padding: 5px; border-radius: 9px; }
+
+.scout-bubbles {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    max-width: min(72%, 640px);
+    margin-left: 38px;
+}
+
+.adviser-response > .msg-time { margin: 6px 0 0 38px; }
+
+.scout-bubble {
+    width: fit-content;
+    max-width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+}
+
+.result-card.scout-bubble { border-top: 1px solid var(--border); overflow: visible; }
+
+.main-bubble { padding: 12px 16px; border-radius: 18px 18px 18px 6px; }
+.details-bubble { padding: 2px 16px 6px; border-radius: 6px 18px 18px 18px; }
+
+/* Official decision as a compact chip — colour is only an accent */
+.decision-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border: 1px solid;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+}
+
+.decision-chip .decision-icon { font-size: 9px; }
+.safe .decision-chip   { background: rgba(74, 222, 128, 0.08);  border-color: rgba(74, 222, 128, 0.3); }
+.verify .decision-chip { background: rgba(251, 191, 36, 0.08);  border-color: rgba(251, 191, 36, 0.3); }
+.danger .decision-chip { background: rgba(251, 113, 133, 0.08); border-color: rgba(251, 113, 133, 0.3); }
+
+.main-bubble .decision-meaning {
+    margin-top: 8px;
+    color: var(--text);
+    font-size: 14.5px;
+    line-height: 1.55;
+}
+
+/* Calmer sections: friendly title + small official name, light dividers */
+.details-bubble .result-section {
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.details-bubble .result-section h4 {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.section-official { font-size: 12px; font-weight: 400; color: var(--text-muted); }
+.details-bubble .testing-details { margin: 10px 0 10px; }
+.adviser-response .details-bubble { animation: msgIn 0.3s ease both; animation-delay: 150ms; }
+
+/* --- Thinking inside the message flow: avatar + name, wave, status --- */
+.thinking-head .small-logo { width: 30px; height: 30px; padding: 5px; border-radius: 9px; }
+.analysis-loading .scout-wave { margin-left: 38px; }
+.thinking-status { margin: 2px 0 0 38px; font-size: 13px; }
+
+@media (max-width: 800px) {
+    .user-bubble, .user-background { max-width: 88%; }
+    .scout-bubbles { max-width: 100%; margin-left: 0; }
+    .adviser-response > .msg-time,
+    .analysis-loading .scout-wave,
+    .thinking-status { margin-left: 0; }
+}
