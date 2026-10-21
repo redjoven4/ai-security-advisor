@@ -142,7 +142,12 @@
             placeholder="e.g. I wasn't trying to log in and I don't know this person."></textarea>
         </div>
 
-        <p id="imageNotice" class="image-notice" role="status" hidden></p>
+        <!-- V2: attached screenshot (sent with the message; not saved) -->
+        <div id="imageAttachment" class="image-attachment" hidden>
+          <img id="imagePreview" alt="Attached screenshot preview">
+          <span id="imageName" class="image-name"></span>
+          <button type="button" id="removeImage" aria-label="Remove screenshot" title="Remove screenshot">×</button>
+        </div>
 
         <div class="composer">
           <label for="messageInput" class="visually-hidden">Message to analyse (required)</label>
@@ -154,7 +159,7 @@
               ＋ Add background
             </button>
               <!-- V2: read the text from a screenshot (you check it before sending) -->
-              <button type="button" id="imageButton" class="background-button" title="Read the text from a screenshot">＋ Screenshot</button>
+              <button type="button" id="imageButton" class="background-button" title="Attach a screenshot of the message">＋ Screenshot</button>
               <input type="file" id="imageInput" accept="image/png,image/jpeg,image/webp" class="visually-hidden" tabindex="-1" aria-hidden="true">
             </div>
             <button type="submit" id="sendButton" class="send-button" disabled aria-label="Analyse message" title="Analyse message (Enter)">↑</button>

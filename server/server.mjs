@@ -25,7 +25,7 @@ try {
   // no .env file — the AI will report that it isn't configured
 }
 
-const { analyse, readImageText, aiConfigured, AnalysisError, AI_PROVIDER, MODEL, PROMPT_VERSION, MAX_MESSAGE_CHARS, MAX_BACKGROUND_CHARS } = await import("./ai-service.mjs");
+const { analyse, aiConfigured, AnalysisError, AI_PROVIDER, MODEL, PROMPT_VERSION, MAX_MESSAGE_CHARS, MAX_BACKGROUND_CHARS } = await import("./ai-service.mjs");
 const db = await import("./db.mjs");
 const { applySafetyFloor } = await import("./safety-floor.mjs"); // V2
 
@@ -91,17 +91,28 @@ async function handleAnalyse(req, res) {
   try {
     if (rateLimited(req.socket.remoteAddress)) throw new AnalysisError(429, "Too many analyses in a short time. Please wait a minute.");
 
-    const body = await readJson(req);
+    const body = await readJson(req, 12_000_000); // allows an attached screenshot
     const message = typeof body.message === "string" ? body.message.trim() : "";
     const background = typeof body.background === "string" ? body.background.trim() : "";
 
+    // V2: optional screenshot (PNG/JPG/WebP data URL). It is analysed, never saved.
+    let image = null;
+    if (body.image) {
+      const match = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(body.image);
+      if (!match) throw new AnalysisError(400, "Please choose a PNG, JPG or WebP screenshot.");
+      image = match[2];
+    }
+
     // Same validation rule as the frontend
-    if (!message) throw new AnalysisError(400, "Please enter a message to analyse.");
+    if (!message && !image) throw new AnalysisError(400, "Please enter a message or attach a screenshot.");
     if (message.length > MAX_MESSAGE_CHARS) throw new AnalysisError(400, `Please keep the message under ${MAX_MESSAGE_CHARS} characters.`);
     if (background.length > MAX_BACKGROUND_CHARS) throw new AnalysisError(400, `Please keep the background under ${MAX_BACKGROUND_CHARS} characters.`);
 
     // V2: the AI decides, then the V0 rules can only RAISE a risky request to "Do not follow"
-    const result = applySafetyFloor(await analyse(message, background), message, background);
+    const analysed = await analyse(message, background, image);
+    // The safety floor also checks the words the model read in a screenshot
+    const shownText = analysed.screenshotText ? `${message}\n${analysed.screenshotText}` : message;
+    const result = applySafetyFloor(analysed, shownText, background);
     result.responseMs = Date.now() - started; // shown in Testing Mode
     await db.saveAnalysis({ timestamp: new Date().toISOString(), message, background, result });
 
@@ -113,29 +124,6 @@ async function handleAnalyse(req, res) {
       sendJson(res, error.status, { error: error.message });
     } else {
       console.error("[analyse] unexpected error:", error);
-      sendJson(res, 500, { error: "Something went wrong on the server. Please try again." });
-    }
-  }
-}
-
-/* ---------- POST /api/read-image (V2: screenshot → text) ---------- */
-// Only returns the text found in the screenshot. The image is not saved.
-async function handleReadImage(req, res) {
-  const started = Date.now();
-  try {
-    if (rateLimited(req.socket.remoteAddress)) throw new AnalysisError(429, "Too many requests in a short time. Please wait a minute.");
-    const body = await readJson(req, 12_000_000); // screenshots are larger than text
-    const match = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(body.image || "");
-    if (!match) throw new AnalysisError(400, "Please choose a PNG, JPG or WebP screenshot.");
-    const text = await readImageText(match[2]);
-    console.log(`[read-image] ${text.length} chars in ${Date.now() - started}ms`);
-    sendJson(res, 200, { text });
-  } catch (error) {
-    if (error instanceof AnalysisError) {
-      console.warn(`[read-image] failed (${error.status}): ${error.logDetail}`);
-      sendJson(res, error.status, { error: error.message });
-    } else {
-      console.error("[read-image] unexpected error:", error);
       sendJson(res, 500, { error: "Something went wrong on the server. Please try again." });
     }
   }
@@ -172,9 +160,6 @@ const server = http.createServer(async (req, res) => {
     return req.method === "POST" ? handleAnalyse(req, res) : sendJson(res, 405, { error: "Use POST." });
   }
   if (url.pathname === "/api/history") return handleHistory(req, res);
-  if (url.pathname === "/api/read-image") {
-    return req.method === "POST" ? handleReadImage(req, res) : sendJson(res, 405, { error: "Use POST." });
-  }
   if (url.pathname === "/api/health") {
     // Says WHETHER a key is set — never the key itself.
     return sendJson(res, 200, { ok: true, version: "V2", provider: AI_PROVIDER, aiConfigured: aiConfigured(), model: MODEL, promptVersion: PROMPT_VERSION, database: db.databaseConfigured() });

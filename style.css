@@ -1607,25 +1607,47 @@ body.testing-mode .test-only { display: revert !important; }
 }
 
 
-/* V2: screenshot button + the note shown after reading a screenshot */
+/* V2: screenshot button, attachment preview, and screenshots in chat */
 .composer-tools { display: flex; flex-wrap: wrap; gap: 6px; }
 .background-button:disabled { opacity: 0.5; cursor: default; }
 
-.image-notice {
+.image-attachment {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: fit-content;
+    max-width: 100%;
     margin: 0 0 8px;
-    padding: 8px 12px;
-    border-radius: 10px;
+    padding: 6px 6px 6px 6px;
     border: 1px solid var(--border);
+    border-radius: 12px;
     background: var(--surface);
-    color: var(--text-secondary);
-    font-size: 12.5px;
-    line-height: 1.45;
+    animation: fadeUp 0.2s ease;
 }
 
-.image-notice.busy  { animation: waveBreathe 1.4s ease-in-out infinite; }
-.image-notice.ok    { border-color: rgba(122, 162, 255, 0.35); color: var(--text); }
-.image-notice.error { border-color: rgba(251, 113, 133, 0.4); color: var(--red); }
+.image-attachment img { width: 44px; height: 44px; object-fit: cover; border-radius: 8px; }
 
-/* Not enough height for the suggestions under the welcome: hide them for now */
-.main.chat-empty.no-room .empty-extras { display: none; }
-.main.chat-empty.no-room .welcome { margin-top: 3vh; }
+.image-name {
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+}
+
+.image-attachment button {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 17px;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 6px;
+}
+
+.image-attachment button:hover { color: var(--text); background: var(--surface-hover); }
+
+.user-bubble.has-image { padding: 6px; }
+.user-attachment { display: block; max-width: 260px; max-height: 320px; border-radius: 12px; }
+.user-bubble.has-image p { padding: 6px 8px 4px; }

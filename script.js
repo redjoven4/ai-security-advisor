@@ -842,7 +842,7 @@ if (typeof module !== "undefined") module.exports = { analyseMessage, ADVISER_VE
 const AI_API_URL = "/api/analyse";
 const AI_TIMEOUT_MS = 90000;
 
-async function analyseWithAI(rawMessage, rawBackground) {
+async function analyseWithAI(rawMessage, rawBackground, image = null) {
   // Opened by double-clicking index.html: there is no server to ask.
   if (location.protocol === "file:") {
     throw new Error("V1 needs its small server for AI analysis. In the project folder run \"npm start\", then open http://localhost:8080. (The V0 rules work without it.)");
@@ -855,7 +855,7 @@ async function analyseWithAI(rawMessage, rawBackground) {
     response = await fetch(AI_API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: rawMessage, background: rawBackground }),
+      body: JSON.stringify({ message: rawMessage, background: rawBackground, image }), // image: screenshot data URL or null
       signal: controller.signal,
     });
   } catch (error) {
@@ -877,9 +877,10 @@ async function analyseWithAI(rawMessage, rawBackground) {
   const result = data.result;
   result.message = rawMessage.trim();
   result.background = (rawBackground || "").trim();
+  result.image = image; // kept for this session so history can show it again
 
   // For Testing Mode: what would the unchanged V0 rules have decided?
-  const v0 = analyseMessage(rawMessage, rawBackground);
+  const v0 = analyseMessage(result.screenshotText ? `${rawMessage}\n${result.screenshotText}` : rawMessage, rawBackground);
   result.v0Comparison = { decision: v0.decision, reasons: v0.allReasons };
   return result;
 }
@@ -997,11 +998,20 @@ function renderUserBubble(entry) {
   // The message itself: a chat bubble that is only as wide as its text
   const bubble = el("article", "user-bubble");
   bubble.setAttribute("aria-label", "Your message");
-  const msg = el("p");
-  // Highlight message phrases that triggered important rules
-  const phrases = entry.result.evidence.filter((e) => e.from === "message").map((e) => e.highlight);
-  setHighlightedText(msg, entry.result.message, phrases);
-  bubble.appendChild(msg);
+  if (entry.result.image) {
+    bubble.classList.add("has-image");
+    const img = el("img", "user-attachment");
+    img.src = entry.result.image;
+    img.alt = "Your screenshot";
+    bubble.appendChild(img);
+  }
+  if (entry.result.message) {
+    const msg = el("p");
+    // Highlight message phrases that triggered important rules
+    const phrases = entry.result.evidence.filter((e) => e.from === "message").map((e) => e.highlight);
+    setHighlightedText(msg, entry.result.message, phrases);
+    bubble.appendChild(msg);
+  }
   row.appendChild(bubble);
 
   // Background is the user's own note, not part of the message: shown quieter, underneath
@@ -1071,7 +1081,8 @@ function renderResult(entry) {
     if (item.quote) {
       const q = el("q", item.from === "background" ? "evidence-quote from-background" : "evidence-quote");
       setHighlightedText(q, item.quote, [item.highlight]);
-      li.append(q, el("span", "quote-source", item.from === "background" ? "from your background" : "from the message"));
+      const source = { background: "from your background", screenshot: "from the screenshot" }[item.from] || "from the message";
+      li.append(q, el("span", "quote-source", source));
     }
     evList.appendChild(li);
   });
@@ -1126,6 +1137,9 @@ function renderResult(entry) {
   if (r.v0Comparison) addTestLine("V0 rules would decide:", [r.v0Comparison.decision, ...r.v0Comparison.reasons]);
   // V2: did the V0 safety floor raise the AI's decision?
   if (r.engine === "ai") addTestLine("Safety floor:", [(r.checks || []).includes("safety_floor_applied") ? "applied (V0 rules raised the AI's decision)" : "not needed"]);
+  // V2: screenshot details (Testing Mode only)
+  addTestLine("Image input:", [r.imageInput ? `yes (${r.model})` : "no"]);
+  if (r.imageInput) addTestLine("Screenshot text the model read:", [r.screenshotText || "(none)"]);
   if (r.checks && r.checks.length) addTestLine("Checks:", r.checks);
   content.appendChild(test);
 
@@ -1159,10 +1173,14 @@ function renderErrorCard(errorText, onRetry, onUseV0) {
   const retry = el("button", "error-button", "↻ Retry");
   retry.type = "button";
   retry.addEventListener("click", onRetry);
-  const useV0 = el("button", "error-button", "Use V0 rules instead");
-  useV0.type = "button";
-  useV0.addEventListener("click", onUseV0);
-  actions.append(retry, useV0);
+  actions.append(retry);
+  if (onUseV0) {
+    // (not offered for a screenshot with no typed text: V0 rules can only read text)
+    const useV0 = el("button", "error-button", "Use V0 rules instead");
+    useV0.type = "button";
+    useV0.addEventListener("click", onUseV0);
+    actions.append(useV0);
+  }
   header.appendChild(actions);
 
   card.appendChild(header);
@@ -1189,14 +1207,15 @@ let waveCount = 0;
 
 // V2: Scout's thinking state — logo glow, "Scout" + a cycling status line,
 // and an original SVG wave. Shown only while the real request is running.
-function renderLoading() {
+function renderLoading(hasImage = false) {
+  const steps = hasImage ? ["Looking at the screenshot...", ...LOADING_STEPS.slice(1)] : LOADING_STEPS;
   const box = el("div", "analysis-loading");
   box.setAttribute("role", "status");
 
   const head = el("div", "thinking-head");
   const logo = el("span", "small-logo thinking-logo");
   logo.appendChild(scoutLogo());
-  const status = el("span", "loading-status", LOADING_STEPS[0]);
+  const status = el("span", "loading-status", steps[0]);
   head.append(logo, document.createTextNode("Scout"));
   box.appendChild(head);
 
@@ -1224,10 +1243,10 @@ function renderLoading() {
   // Cycle the status line (fade up and out, new line fades in), stop on the last
   let step = 0;
   const timer = setInterval(() => {
-    if (++step >= LOADING_STEPS.length) return clearInterval(timer);
+    if (++step >= steps.length) return clearInterval(timer);
     status.classList.add("out");
     setTimeout(() => {
-      status.textContent = LOADING_STEPS[step];
+      status.textContent = steps[step];
       status.classList.remove("out");
       status.classList.add("enter");
       void status.offsetWidth;
@@ -1250,10 +1269,11 @@ function renderHistoryItem(entry, onSelect) {
   const btn = el("button", "history-item");
   btn.type = "button";
   btn.dataset.number = entry.number;
-  btn.title = `${d.label}: ${entry.result.message}`;
+  const label = entry.result.message || "Screenshot";
+  btn.title = `${d.label}: ${label}`;
   const icon = el("span", "history-item__icon", d.icon);
   icon.setAttribute("aria-hidden", "true");
-  const text = el("span", "history-item__text", entry.result.message);
+  const text = el("span", "history-item__text", label);
   const sr = el("span", "visually-hidden", ` — ${d.label}`);
   btn.append(icon, text, sr, el("span", "history-item__num", `#${entry.number}`));
   btn.addEventListener("click", () => onSelect(entry));
@@ -1313,7 +1333,7 @@ function initUI() {
 
   // The send button only works when there is a message and nothing is running
   function updateSendButton() {
-    sendButton.disabled = isAnalysing || !messageInput.value.trim();
+    sendButton.disabled = isAnalysing || (!messageInput.value.trim() && !attachedImage); // a screenshot alone is enough
   }
 
   // Clear conversation only makes sense when something is on screen
@@ -1323,7 +1343,7 @@ function initUI() {
 
   // Empty the message box and the background field
   function resetComposer() {
-    hideImageNotice();
+    clearAttachment();
     messageInput.value = "";
     closeBackground();
     errorBox.textContent = "";
@@ -1513,26 +1533,13 @@ function initUI() {
     messageInput.focus();
   });
 
-  /* --- V2: screenshot → text. Scout only READS the text here; you check and
-         correct it, then it is analysed like any typed message. The image is
-         not saved anywhere. --- */
+  /* --- V2: screenshot attachment. The image itself is sent with the
+         message and analysed by the vision model — no text is put in the
+         composer and nothing needs checking first. Not saved anywhere. --- */
   const imageInput = $("imageInput");
   const imageButton = $("imageButton");
-  const imageNotice = $("imageNotice");
-  let isReadingImage = false;
-
-  function showImageNotice(text, kind) {
-    imageNotice.textContent = text;
-    imageNotice.className = `image-notice ${kind}`;
-    imageNotice.hidden = false;
-    placeEmptyComposer();
-  }
-
-  function hideImageNotice() {
-    if (imageNotice.hidden) return;
-    imageNotice.hidden = true;
-    placeEmptyComposer();
-  }
+  const imageAttachment = $("imageAttachment");
+  let attachedImage = null; // { dataUrl, name }
 
   // Large phone screenshots are scaled down (max 1600px) before sending
   async function shrinkImage(file) {
@@ -1545,34 +1552,40 @@ function initUI() {
     return canvas.toDataURL("image/png");
   }
 
+  function clearAttachment() {
+    attachedImage = null;
+    imageAttachment.hidden = true;
+    $("imagePreview").removeAttribute("src");
+    updateSendButton();
+    placeEmptyComposer();
+  }
+
   imageButton.addEventListener("click", () => imageInput.click());
   imageInput.addEventListener("change", async () => {
     const file = imageInput.files[0];
     imageInput.value = ""; // allow choosing the same file again
-    if (!file || isReadingImage || isAnalysing) return;
-    if (!/^image\/(png|jpe?g|webp)$/.test(file.type)) return showImageNotice("Please choose a PNG, JPG or WebP screenshot.", "error");
-
-    isReadingImage = true;
-    imageButton.disabled = true;
-    showImageNotice(`Reading the text in "${file.name}"…`, "busy");
-    try {
-      const response = await fetch("/api/read-image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: await shrinkImage(file) }),
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok || !data?.text) throw new Error(data?.error || "Scout couldn't read that screenshot.");
-      messageInput.value = data.text;
-      messageInput.dispatchEvent(new Event("input"));
-      showImageNotice("Here's the text I read from your screenshot. Check it and fix anything I misread, then send.", "ok");
-      messageInput.focus();
-    } catch (error) {
-      showImageNotice(error instanceof TypeError ? "Could not reach the adviser's server. Is it running (npm start)?" : error.message, "error");
-    } finally {
-      isReadingImage = false;
-      imageButton.disabled = false;
+    if (!file || isAnalysing) return;
+    if (!/^image\/(png|jpe?g|webp)$/.test(file.type)) {
+      errorBox.textContent = "Please choose a PNG, JPG or WebP screenshot.";
+      return;
     }
+    try {
+      attachedImage = { dataUrl: await shrinkImage(file), name: file.name };
+    } catch {
+      errorBox.textContent = "That image couldn't be opened. Please try another screenshot.";
+      return;
+    }
+    errorBox.textContent = "";
+    $("imagePreview").src = attachedImage.dataUrl;
+    $("imageName").textContent = file.name;
+    imageAttachment.hidden = false;
+    updateSendButton();
+    placeEmptyComposer();
+    messageInput.focus();
+  });
+  $("removeImage").addEventListener("click", () => {
+    clearAttachment();
+    messageInput.focus();
   });
 
   /* --- Typing in the composer --- */
@@ -1655,18 +1668,18 @@ function initUI() {
     // Input validation: message required, background optional
     const message = messageInput.value;
     const background = backgroundContainer.hidden ? "" : backgroundInput.value;
-    if (!message.trim()) {
+    if (!message.trim() && !attachedImage) {
       errorBox.textContent = "Please enter a message to analyse.";
       messageInput.focus();
       return;
     }
     errorBox.textContent = "";
-    runAnalysis(message, background);
+    runAnalysis(message, background, attachedImage ? attachedImage.dataUrl : null);
   });
 
   // V1: one analysis — ask the AI, then show the result or an error card.
   // Used by the Analyse button and by Retry.
-  async function runAnalysis(message, background) {
+  async function runAnalysis(message, background, image = null) {
     isAnalysing = true;
     updateSendButton();
     const firstMessage = main.classList.contains("chat-empty");
@@ -1678,9 +1691,9 @@ function initUI() {
     const pendingRow = renderUserBubble({
       number: analysisCounter + 1,
       timestamp: new Date(),
-      result: { message: message.trim(), background: background.trim(), evidence: [] },
+      result: { message: message.trim(), background: background.trim(), image, evidence: [] },
     });
-    const loading = renderLoading();
+    const loading = renderLoading(Boolean(image));
     if (firstMessage) {
       // let the welcome/composer transition lead
       pendingRow.style.animationDelay = "250ms";
@@ -1694,7 +1707,7 @@ function initUI() {
     let result = null;
     let failure = null;
     try {
-      [result] = await Promise.all([analyseWithAI(message, background), minimumWait]);
+      [result] = await Promise.all([analyseWithAI(message, background, image), minimumWait]);
     } catch (error) {
       await minimumWait;
       failure = error;
@@ -1720,13 +1733,15 @@ function initUI() {
           if (isAnalysing) return;
           card.remove();
           pendingRow.remove();
-          runAnalysis(message, background);
+          runAnalysis(message, background, image);
         },
-        () => {
-          if (isAnalysing) return;
-          card.remove();
-          showResult(analyseWithV0Rules(message, background), pendingRow);
-        }
+        image && !message.trim()
+          ? null
+          : () => {
+              if (isAnalysing) return;
+              card.remove();
+              showResult(analyseWithV0Rules(message, background), pendingRow);
+            }
       );
       messages.appendChild(card);
       updateClearButton();
