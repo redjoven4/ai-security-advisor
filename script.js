@@ -1306,12 +1306,16 @@ function initUI() {
 
   document.querySelectorAll("[data-version]").forEach((n) => (n.textContent = ADVISER_VERSION));
 
+  // Sidebar + home robots become inline copies of the one design too, so the
+  // home robot can react to hover (same smiling face everywhere)
+  document.querySelectorAll(".logo svg, .hero-icon svg").forEach((svg) => svg.replaceWith(scoutLogo()));
+
   // V1: say truthfully where the message is analysed (this computer or online)
   fetch("/api/health")
     .then((res) => res.json())
     .then((health) => {
       if (health.provider === "ollama") {
-        $("privacyNote").textContent = "Scout analyses your message with a small AI model running on this computer — nothing is sent online. It only evaluates the information you provide and cannot verify senders or websites.";
+        $("privacyNote").textContent = "Scout analyses your messages and screenshots with a small AI model running on this computer — nothing is sent online. It only evaluates the information you provide and cannot verify senders or websites.";
       } else if (health.provider === "claude") {
         $("privacyNote").textContent = "Scout sends your message and background to an AI service (Claude) for analysis. It only evaluates the information you provide and cannot verify senders or websites.";
       }

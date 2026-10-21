@@ -159,7 +159,7 @@ button { cursor: pointer; }
     margin-top: 2px;
 }
 
-/* "Security Message Adviser" under the name Scout */
+/* Scout's catchphrase under the name */
 .brand p.brand-purpose {
     color: var(--text-secondary);
     font-size: 11.5px;
@@ -1654,3 +1654,23 @@ body.testing-mode .test-only { display: revert !important; }
 
 /* V2: an image is being dragged over the composer */
 .composer-form.drag-over .composer { border-color: #7aa2ff; box-shadow: 0 0 0 3px rgba(122, 162, 255, 0.2); }
+
+
+/* V2: Scout's smile. While thinking the smile relaxes into a focused look;
+   it returns when the answer arrives (the reply avatar is a fresh, smiling copy). */
+.thinking-logo .robot-mouth {
+    transform-box: fill-box;
+    transform-origin: center;
+    transform: scaleY(0.35);
+}
+
+/* Home robot: tiny hover hello — the antenna pulses and the eyes glance up */
+.hero-icon .robot-antenna-tip,
+.hero-icon .robot-eyes {
+    transform-box: fill-box;
+    transform-origin: center;
+    transition: transform 0.25s ease;
+}
+
+.hero-icon:hover .robot-antenna-tip { animation: antennaPulse 1.2s ease-in-out 2; }
+.hero-icon:hover .robot-eyes { transform: translateY(-0.6px); }
