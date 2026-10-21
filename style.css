@@ -1439,3 +1439,40 @@ body.testing-mode .testing-details {
     .empty-extras .limitations { display: none; }
     .empty-extras .suggestions button { padding: 10px 12px; }
 }
+
+
+/* =====================================================================
+   V2 — SCOUT ROBOT LOGO: subtle thinking animation (decorative only)
+   Eyes glance toward the message, then slowly look around with one soft
+   blink; the antenna tip pulses. No bouncing. The wave stays the main
+   thinking animation.
+   ===================================================================== */
+
+.logo svg, .hero-icon svg, .small-logo svg { pointer-events: none; }
+
+.thinking-logo .robot-eyes,
+.thinking-logo .robot-antenna-tip {
+    transform-box: fill-box;
+    transform-origin: center;
+}
+
+.thinking-logo .robot-eyes { animation: robotLook 3.2s ease-in-out infinite; }
+.thinking-logo .robot-antenna-tip { animation: antennaPulse 1.6s ease-in-out infinite; }
+
+@keyframes robotLook {
+    0%        { transform: translate(0, 0); }
+    8%, 26%   { transform: translate(0.9px, 0); }            /* glance toward the message */
+    40%, 52%  { transform: translate(-0.9px, 0.2px); }
+    60%       { transform: translate(0, 0) scaleY(1); }
+    63%       { transform: translate(0, 0) scaleY(0.15); }   /* soft blink */
+    66%, 100% { transform: translate(0, 0) scaleY(1); }
+}
+
+@keyframes antennaPulse {
+    0%, 100% { opacity: 1;    transform: scale(1); }
+    50%      { opacity: 0.45; transform: scale(0.8); }
+}
+
+/* Response arrived: the robot returns to normal */
+.analysis-loading.settling .robot-eyes,
+.analysis-loading.settling .robot-antenna-tip { animation: none; }

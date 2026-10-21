@@ -952,12 +952,14 @@ function el(tag, className, text) {
 }
 
 // Scout's logo (uses the <symbol id="scout-logo"> defined in index.html).
+// An inline copy of the ONE robot design in index.html, so CSS can gently
+// animate its eyes and antenna while Scout is thinking.
 function scoutLogo() {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
-  use.setAttribute("href", "#scout-logo");
+  svg.setAttribute("viewBox", "0 0 24 24");
   svg.setAttribute("aria-hidden", "true");
-  svg.appendChild(use);
+  svg.setAttribute("focusable", "false");
+  svg.innerHTML = document.getElementById("scout-logo").innerHTML;
   return svg;
 }
 

@@ -16,15 +16,22 @@
 
 <body>
 
-<!-- SCOUT LOGO (original, drawn here; no image files or icon libraries).
-     A scanning ring that is open at the top-right, an inner "lens" ring,
-     and a small point where the scan has spotted something.
-     Uses currentColor, so it takes the colour of its container. -->
+<!-- SCOUT LOGO — an original friendly robot head (no image files or icon
+     libraries): rounded head, small side "ears", two soft oval eyes, a calm
+     slight smile and a tiny antenna. Uses currentColor, so it takes the colour
+     of its container. Classes let CSS animate the eyes/antenna while thinking. -->
 <svg class="icon-sprite" aria-hidden="true" focusable="false">
   <symbol id="scout-logo" viewBox="0 0 24 24">
-    <path d="M20.37 10.52A8.5 8.5 0 1 1 13.48 3.63" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
-    <circle cx="12" cy="12" r="3.4" fill="none" stroke="currentColor" stroke-width="2.1"/>
-    <circle cx="18.01" cy="5.99" r="2.1" fill="currentColor"/>
+    <line class="robot-antenna" x1="12" y1="3.6" x2="12" y2="6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    <circle class="robot-antenna-tip" cx="12" cy="2.6" r="1.45" fill="currentColor"/>
+    <rect x="4" y="6" width="16" height="13.2" rx="4.6" fill="none" stroke="currentColor" stroke-width="1.9"/>
+    <rect x="1.6" y="10.4" width="1.7" height="4.4" rx="0.85" fill="currentColor"/>
+    <rect x="20.7" y="10.4" width="1.7" height="4.4" rx="0.85" fill="currentColor"/>
+    <g class="robot-eyes">
+      <ellipse cx="9.2" cy="11.9" rx="1.45" ry="1.85" fill="currentColor"/>
+      <ellipse cx="14.8" cy="11.9" rx="1.45" ry="1.85" fill="currentColor"/>
+    </g>
+    <path d="M10.4 15.9q1.6 0.75 3.2 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
   </symbol>
 </svg>
 
