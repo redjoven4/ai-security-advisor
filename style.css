@@ -16,7 +16,7 @@
 }
 
 :root {
-    --background: #0b0d12;
+    --background: #000000; /* V2: true black main background (surfaces stay charcoal) */
     --sidebar: #0e1117;
     --surface: #12161d;
     --surface-hover: #171c24;
@@ -1674,3 +1674,149 @@ body.testing-mode .test-only { display: revert !important; }
 
 .hero-icon:hover .robot-antenna-tip { animation: antennaPulse 1.2s ease-in-out 2; }
 .hero-icon:hover .robot-eyes { transform: translateY(-0.6px); }
+
+
+/* =====================================================================
+   V2 EASTER EGG — MINI SCOUT
+   Layering: black background → .fly-layer (z 0) → chat (z 1) → composer
+   (z 2). So Mini Scout is always BEHIND real content and never clickable.
+   Paths are CSS keyframes; --fly-y / --fly-h / --fly-w come from JS and
+   describe the empty band it may use.
+   ===================================================================== */
+
+.fly-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.chat { position: relative; z-index: 1; }
+
+.mini-scout {
+    position: absolute;
+    top: var(--fly-y);
+    left: 0;
+    width: var(--mini);
+    height: var(--mini);
+    opacity: 0;
+    pointer-events: none;
+    will-change: transform, opacity;
+    animation-fill-mode: forwards;
+}
+
+.mini-body {
+    width: 100%;
+    height: 100%;
+    padding: 18%;
+    border-radius: 28%;
+    background: var(--text);
+    color: #000;
+    animation: miniBob 0.9s ease-in-out infinite alternate; /* bob + tiny tilt */
+}
+
+.mini-body svg { width: 100%; height: 100%; display: block; }
+
+/* two tiny motion lines behind it */
+.mini-scout::before {
+    content: "";
+    position: absolute;
+    top: 38%;
+    right: 100%;
+    width: 9px;
+    height: 2px;
+    margin-right: 3px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, transparent, rgba(122, 162, 255, 0.75));
+    box-shadow: -3px 6px 0 rgba(122, 162, 255, 0.35);
+}
+
+.path-peek-fly::before,
+.path-peek::before { right: auto; left: 100%; margin: 0 0 0 3px; transform: scaleX(-1); }
+.path-peek::before { display: none; }
+
+@keyframes miniBob {
+    from { transform: translateY(-2px) rotate(-5deg); }
+    to   { transform: translateY(2px) rotate(5deg); }
+}
+
+/* A — peek in from the right, pause, drift up-left and fade */
+.path-peek-fly { animation: flyPeekFly 6.5s ease-in-out forwards; }
+@keyframes flyPeekFly {
+    0%   { opacity: 0; transform: translate(calc(var(--fly-w) + 10px), calc(var(--fly-h) * 0.6)); }
+    14%  { opacity: 1; transform: translate(calc(var(--fly-w) - 60px), calc(var(--fly-h) * 0.6)); }
+    36%  { opacity: 1; transform: translate(calc(var(--fly-w) - 64px), calc(var(--fly-h) * 0.55)); }
+    90%  { opacity: 1; transform: translate(calc(var(--fly-w) * 0.62), 0px); }
+    100% { opacity: 0; transform: translate(calc(var(--fly-w) * 0.58), -10px); }
+}
+
+/* B — across the main area in a gentle wave */
+.path-across { animation: flyAcross 9s ease-in-out forwards; }
+@keyframes flyAcross {
+    0%   { opacity: 0; transform: translate(-40px, calc(var(--fly-h) * 0.5)); }
+    8%   { opacity: 1; }
+    25%  { transform: translate(calc(var(--fly-w) * 0.25), calc(var(--fly-h) * 0.25)); }
+    50%  { transform: translate(calc(var(--fly-w) * 0.5), calc(var(--fly-h) * 0.7)); }
+    75%  { transform: translate(calc(var(--fly-w) * 0.75), calc(var(--fly-h) * 0.3)); }
+    92%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(calc(var(--fly-w) + 40px), calc(var(--fly-h) * 0.5)); }
+}
+
+/* C — one small loop in the middle, then off to the right */
+.path-loop { animation: flyLoop 9s ease-in-out forwards; }
+@keyframes flyLoop {
+    0%   { opacity: 0; transform: translate(-40px, calc(var(--fly-h) * 0.7)); }
+    8%   { opacity: 1; }
+    35%  { transform: translate(calc(var(--fly-w) * 0.42), calc(var(--fly-h) * 0.7)); }
+    45%  { transform: translate(calc(var(--fly-w) * 0.47), calc(var(--fly-h) * 0.35)); }
+    55%  { transform: translate(calc(var(--fly-w) * 0.42), calc(var(--fly-h) * 0.1)); }
+    65%  { transform: translate(calc(var(--fly-w) * 0.37), calc(var(--fly-h) * 0.35)); }
+    75%  { transform: translate(calc(var(--fly-w) * 0.42), calc(var(--fly-h) * 0.7)); }
+    92%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(calc(var(--fly-w) + 40px), calc(var(--fly-h) * 0.5)); }
+}
+
+/* D — just peeks from the right edge, then hides again (rare) */
+.path-peek { animation: flyPeek 3.4s ease-in-out forwards; }
+@keyframes flyPeek {
+    0%   { opacity: 0; transform: translate(calc(var(--fly-w) + 4px), calc(var(--fly-h) * 0.4)) rotate(0deg); }
+    22%  { opacity: 1; transform: translate(calc(var(--fly-w) - var(--mini) * 0.6), calc(var(--fly-h) * 0.4)) rotate(-10deg); }
+    68%  { opacity: 1; transform: translate(calc(var(--fly-w) - var(--mini) * 0.6), calc(var(--fly-h) * 0.4)) rotate(-10deg); }
+    100% { opacity: 0; transform: translate(calc(var(--fly-w) + 4px), calc(var(--fly-h) * 0.4)) rotate(0deg); }
+}
+
+/* E — diagonal flyby, bottom-left to top-right, gently curved */
+.path-diagonal { animation: flyDiagonal 8s ease-in-out forwards; }
+@keyframes flyDiagonal {
+    0%   { opacity: 0; transform: translate(-40px, var(--fly-h)); }
+    10%  { opacity: 1; }
+    50%  { transform: translate(calc(var(--fly-w) * 0.45), calc(var(--fly-h) * 0.62)); }
+    90%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(calc(var(--fly-w) + 40px), 0px); }
+}
+
+/* Special (rare) — flies in, stops near the left edge, looks toward the
+   middle, wiggles its antenna, flies away */
+.path-special { animation: flySpecial 7s ease-in-out forwards; }
+@keyframes flySpecial {
+    0%   { opacity: 0; transform: translate(-40px, calc(var(--fly-h) * 0.5)); }
+    18%  { opacity: 1; transform: translate(calc(var(--fly-w) * 0.08), calc(var(--fly-h) * 0.5)); }
+    70%  { opacity: 1; transform: translate(calc(var(--fly-w) * 0.08), calc(var(--fly-h) * 0.45)); }
+    100% { opacity: 0; transform: translate(-40px, 0px); }
+}
+
+.path-special .robot-eyes,
+.path-special .robot-antenna-tip { transform-box: fill-box; transform-origin: center; }
+.path-special .robot-eyes { animation: miniLook 7s ease-in-out forwards; }
+.path-special .robot-antenna-tip { animation: antennaPulse 0.5s ease-in-out 1.4s 3; }
+
+@keyframes miniLook {
+    0%, 22%   { transform: translate(0, 0); }
+    30%, 62%  { transform: translate(1px, 0); }   /* looks toward the middle */
+    70%, 100% { transform: translate(0, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fly-layer { display: none; }
+}

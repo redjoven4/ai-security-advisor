@@ -1734,6 +1734,7 @@ function initUI() {
   async function runAnalysis(message, background, image = null) {
     isAnalysing = true;
     updateSendButton();
+    $("flyLayer").replaceChildren(); // the thinking wave stays the visual focus
     const firstMessage = main.classList.contains("chat-empty");
     setChatState("active");
     const startedInView = viewId;
@@ -1832,6 +1833,89 @@ function initUI() {
     historyEmpty.hidden = false;
     clearHistoryButton.disabled = true;
   });
+
+  /* --- V2 easter egg: Mini Scout ---------------------------------------
+     A tiny copy of Scout occasionally flies through an EMPTY part of the
+     background. Rules: one at a time; rarer during a conversation and on
+     phones; never while Scout is analysing or a dialog is open; skipped if
+     there's no empty space; off with reduced motion; paused while the tab
+     is hidden (no backlog). Decoration only — pointer-events: none. */
+  const flyLayer = $("flyLayer");
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const FLY_PATHS = ["peek-fly", "across", "loop", "diagonal"];
+  let flyTimer = null;
+  let flyCount = 0;
+
+  function scheduleFlyby() {
+    clearTimeout(flyTimer);
+    if (reduceMotion.matches || document.hidden) return;
+    let [min, max] = main.classList.contains("chat-empty") ? [25, 45] : [45, 90]; // seconds
+    if (isPhone.matches) [min, max] = [min * 2, max * 2];
+    flyTimer = setTimeout(() => flyby(), (min + Math.random() * (max - min)) * 1000);
+  }
+
+  // Largest empty horizontal band of the main area (between the welcome,
+  // messages, composer etc.), or null if it's too crowded.
+  function findEmptyBand(size) {
+    const box = main.getBoundingClientRect();
+    const blocks = [welcome, ...messages.children, form, $("emptyExtras"), $("privacyNote"), document.querySelector(".top-bar")]
+      .filter((n) => n && n.offsetParent !== null && !n.hidden)
+      .map((n) => n.getBoundingClientRect())
+      .filter((r) => r.height > 0 && r.bottom > box.top && r.top < box.bottom)
+      .map((r) => [Math.max(0, r.top - box.top - 12), Math.min(box.height, r.bottom - box.top + 12)])
+      .sort((a, b) => a[0] - b[0]);
+    let best = null;
+    let cursor = 16;
+    for (const [top, bottom] of [...blocks, [box.height - 16, box.height]]) {
+      if (top - cursor > (best ? best.h : 0)) best = { y: cursor, h: top - cursor };
+      cursor = Math.max(cursor, bottom);
+    }
+    return best && best.h >= size + 40 ? { y: best.y + 8, h: best.h - size - 16, w: box.width } : null;
+  }
+
+  function flyby(forcedPath) {
+    const busy = isAnalysing || document.hidden || reduceMotion.matches || flyLayer.children.length || document.querySelector("dialog[open]");
+    if (busy) return forcedPath ? null : scheduleFlyby(); // the same rules apply to the demo hook
+    const size = isPhone.matches ? 22 : 30;
+    const band = findEmptyBand(size);
+    if (!band) return scheduleFlyby(); // no room: skip this time
+
+    flyCount++;
+    const path = forcedPath || (flyCount % 6 === 0 ? "special" : Math.random() < 0.12 ? "peek" : FLY_PATHS[Math.floor(Math.random() * FLY_PATHS.length)]);
+    flyLayer.replaceChildren(); // never more than one Mini Scout
+
+    const bot = el("div", `mini-scout path-${path}`);
+    bot.style.setProperty("--fly-y", `${band.y}px`);
+    bot.style.setProperty("--fly-h", `${band.h}px`);
+    bot.style.setProperty("--fly-w", `${band.w}px`);
+    bot.style.setProperty("--mini", `${size}px`);
+    const body = el("div", "mini-body");
+    body.appendChild(scoutLogo());
+    bot.appendChild(body);
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      bot.remove();
+      scheduleFlyby();
+    };
+    bot.addEventListener("animationend", (event) => event.target === bot && finish());
+    setTimeout(finish, 12000); // backup: never let a Mini Scout linger (longest path is 9 s)
+    flyLayer.appendChild(bot);
+    return path;
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      clearTimeout(flyTimer); // nothing runs or piles up while hidden
+      flyLayer.replaceChildren();
+    } else {
+      scheduleFlyby();
+    }
+  });
+  reduceMotion.addEventListener?.("change", scheduleFlyby);
+  window.scoutFlyby = (path) => flyby(path || FLY_PATHS[0]); // handy for demos: scoutFlyby("loop")
+  scheduleFlyby();
 
   updateSendButton();
   updateClearButton();
