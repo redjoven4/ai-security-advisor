@@ -871,7 +871,9 @@ async function analyseWithAI(rawMessage, rawBackground, image = null) {
     // not JSON — handled below
   }
   if (!response.ok || !data || !data.result) {
-    throw new Error((data && data.error) || `The server returned an error (${response.status}).`);
+    const failure = new Error((data && data.error) || `The server returned an error (${response.status}).`);
+    failure.reason = (data && data.reason) || `HTTP ${response.status}`; // shown in Testing Mode only
+    throw failure;
   }
 
   const result = data.result;
@@ -955,12 +957,14 @@ function el(tag, className, text) {
 // Scout's logo (uses the <symbol id="scout-logo"> defined in index.html).
 // An inline copy of the ONE robot design in index.html, so CSS can gently
 // animate its eyes and antenna while Scout is thinking.
-function scoutLogo() {
+function scoutLogo(variant = "head") {
+  // "head" = small icons; "full" = whole robot (home screen, flying Scouts)
+  const symbol = document.getElementById(variant === "full" ? "scout-full" : "scout-logo");
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("viewBox", symbol.getAttribute("viewBox"));
   svg.setAttribute("aria-hidden", "true");
   svg.setAttribute("focusable", "false");
-  svg.innerHTML = document.getElementById("scout-logo").innerHTML;
+  svg.innerHTML = symbol.innerHTML;
   return svg;
 }
 
@@ -1150,7 +1154,7 @@ function renderResult(entry) {
 
 // V1: shown when the AI analysis could not be completed. No decision is
 // shown, because none was made.
-function renderErrorCard(errorText, onRetry, onUseV0) {
+function renderErrorCard(errorText, onRetry, onUseV0, reason) {
   const wrapper = el("div", "adviser-response");
 
   const name = el("div", "adviser-name");
@@ -1168,6 +1172,8 @@ function renderErrorCard(errorText, onRetry, onUseV0) {
   icon.setAttribute("aria-hidden", "true");
   decision.append(icon, el("span", null, "No decision was made"));
   header.append(decision, el("p", "decision-meaning", `Scout couldn't complete this analysis. ${errorText}`));
+  // Short technical reason for development (Testing Mode only)
+  if (reason) header.appendChild(el("p", "decision-meaning test-only", `Technical reason: ${reason}`));
 
   const actions = el("div", "error-actions");
   const retry = el("button", "error-button", "↻ Retry");
@@ -1308,7 +1314,7 @@ function initUI() {
 
   // Sidebar + home robots become inline copies of the one design too, so the
   // home robot can react to hover (same smiling face everywhere)
-  document.querySelectorAll(".logo svg, .hero-icon svg").forEach((svg) => svg.replaceWith(scoutLogo()));
+  document.querySelectorAll(".logo svg, .hero-icon svg").forEach((svg) => svg.replaceWith(scoutLogo(svg.hasAttribute("data-full") ? "full" : "head")));
 
   // V1: say truthfully where the message is analysed (this computer or online)
   fetch("/api/health")
@@ -1734,7 +1740,7 @@ function initUI() {
   async function runAnalysis(message, background, image = null) {
     isAnalysing = true;
     updateSendButton();
-    $("flyLayer").replaceChildren(); // the thinking wave stays the visual focus
+    exitSpace(); // the thinking wave stays the visual focus
     const firstMessage = main.classList.contains("chat-empty");
     setChatState("active");
     const startedInView = viewId;
@@ -1767,6 +1773,7 @@ function initUI() {
     }
     await loading.finish(); // fades out, then the answer card fades in
     isAnalysing = false;
+    lastInput = Date.now(); // the 10-second idle timer starts again after an answer
     updateSendButton();
 
     // The user started a new analysis / opened history meanwhile:
@@ -1794,7 +1801,8 @@ function initUI() {
               if (isAnalysing) return;
               card.remove();
               showResult(analyseWithV0Rules(message, background), pendingRow);
-            }
+            },
+        failure.reason
       );
       messages.appendChild(card);
       updateClearButton();
@@ -1834,28 +1842,98 @@ function initUI() {
     clearHistoryButton.disabled = true;
   });
 
-  /* --- V2 easter egg: Mini Scout ---------------------------------------
-     A tiny copy of Scout occasionally flies through an EMPTY part of the
-     background. Rules: one at a time; rarer during a conversation and on
-     phones; never while Scout is analysing or a dialog is open; skipped if
-     there's no empty space; off with reduced motion; paused while the tab
-     is hidden (no backlog). Decoration only — pointer-events: none. */
+  /* --- V2: IDLE SPACE MODE + flying Scouts --------------------------------
+     After 10 s with no real input (mouse, click, keys, wheel, touch) the
+     black background slowly turns into space: faint Scout wave → stars →
+     haze → distant planets → a few tiny Scouts flying past (far ones pass
+     behind planets). Any input calms it back to black. Never during an
+     analysis or with a dialog open; flying Scouts are off with reduced
+     motion; fewer of everything on phones. Decoration only: behind the UI,
+     pointer-events: none. */
+  const spaceLayer = $("spaceLayer");
   const flyLayer = $("flyLayer");
+  const farScouts = $("farScouts");
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-  const FLY_PATHS = ["peek-fly", "across", "loop", "diagonal"];
+  const IDLE_MS = 10_000;
+  const FLY_PATHS = ["across", "across-rev", "loop", "diagonal", "peek-fly"];
+  const DEPTH_SIZE = { far: 20, mid: 28, near: 38 }; // px (smaller = further away)
+  let lastInput = Date.now();
+  let spaceOn = false;
   let flyTimer = null;
   let flyCount = 0;
 
-  function scheduleFlyby() {
-    clearTimeout(flyTimer);
-    if (reduceMotion.matches || document.hidden) return;
-    let [min, max] = main.classList.contains("chat-empty") ? [25, 45] : [45, 90]; // seconds
-    if (isPhone.matches) [min, max] = [min * 2, max * 2];
-    flyTimer = setTimeout(() => flyby(), (min + Math.random() * (max - min)) * 1000);
+  // Stars: three depth layers, each ONE element with many box-shadow dots
+  (function makeStars() {
+    const counts = isPhone.matches ? [30, 12, 3] : [70, 28, 8];
+    ["far", "mid", "near"].forEach((layer, depth) => {
+      const dots = [];
+      for (let n = 0; n < counts[depth]; n++) {
+        const x = Math.round(Math.random() * 2400);
+        const y = Math.round(Math.random() * 1500);
+        dots.push(`${x}px ${y}px 0 ${[0, 0.4, 0.9][depth]}px rgba(220, 235, 255, ${[0.35, 0.6, 0.9][depth]})`);
+      }
+      spaceLayer.querySelector(`.space-stars.${layer}`).style.boxShadow = dots.join(",");
+    });
+  })();
+
+  // A large, very faint version of Scout's wave (three slow sine lines)
+  (function makeWave() {
+    const line = (amp, y) => {
+      let d = `M0 ${y}`;
+      for (let x = 0; x < 2400; x += 150) d += ` Q${x + 75} ${y + ((x / 150) % 2 ? amp : -amp)} ${x + 150} ${y}`;
+      return d;
+    };
+    spaceLayer.querySelector(".space-wave").innerHTML =
+      `<svg viewBox="0 0 2400 160" preserveAspectRatio="none"><defs><linearGradient id="spaceWaveGrad" x1="0" x2="1">` +
+      `<stop offset="0" stop-color="#4aa8ff"/><stop offset="0.5" stop-color="#7fe3ff"/><stop offset="1" stop-color="#8f7bff"/></linearGradient></defs>` +
+      `<path d="${line(28, 80)}" stroke="url(#spaceWaveGrad)" stroke-width="2" stroke-opacity="0.09" fill="none"/>` +
+      `<path d="${line(18, 92)}" stroke="url(#spaceWaveGrad)" stroke-width="1.4" stroke-opacity="0.06" fill="none"/>` +
+      `<path d="${line(40, 70)}" stroke="url(#spaceWaveGrad)" stroke-width="1" stroke-opacity="0.04" fill="none"/></svg>`;
+  })();
+
+  function enterSpace() {
+    if (spaceOn) return;
+    spaceOn = true;
+    main.classList.add("space-on");
+    scheduleScout(2400); // first Scout after the stars have appeared
   }
 
-  // Largest empty horizontal band of the main area (between the welcome,
-  // messages, composer etc.), or null if it's too crowded.
+  // Calm back to black: everything fades over ~1 s, the UI stays usable
+  function exitSpace() {
+    if (!spaceOn) return;
+    spaceOn = false;
+    main.classList.remove("space-on");
+    clearTimeout(flyTimer);
+    [...flyLayer.children, ...farScouts.children].forEach((bot) => bot.classList.add("leaving"));
+    setTimeout(() => {
+      if (spaceOn) return;
+      flyLayer.replaceChildren();
+      farScouts.replaceChildren();
+    }, 900);
+  }
+
+  // Only REAL input counts (animations and programmatic scrolling don't)
+  function noteActivity() {
+    lastInput = Date.now();
+    if (spaceOn) exitSpace();
+  }
+  ["pointermove", "pointerdown", "keydown", "wheel", "touchstart"].forEach((type) =>
+    document.addEventListener(type, noteActivity, { passive: true, capture: true })
+  );
+
+  // One cheap check per second (no timer is reset on every mouse move)
+  setInterval(() => {
+    const quiet = Date.now() - lastInput >= IDLE_MS;
+    if (quiet && !spaceOn && !isAnalysing && !document.hidden && !document.querySelector("dialog[open]")) enterSpace();
+  }, 1000);
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) exitSpace(); // nothing runs or piles up while hidden
+    else lastInput = Date.now();
+  });
+
+  // Empty horizontal bands of the main area (between welcome, messages,
+  // composer…). A random one big enough is used; null if too crowded.
   function findEmptyBand(size) {
     const box = main.getBoundingClientRect();
     const blocks = [welcome, ...messages.children, form, $("emptyExtras"), $("privacyNote"), document.querySelector(".top-bar")]
@@ -1864,58 +1942,71 @@ function initUI() {
       .filter((r) => r.height > 0 && r.bottom > box.top && r.top < box.bottom)
       .map((r) => [Math.max(0, r.top - box.top - 12), Math.min(box.height, r.bottom - box.top + 12)])
       .sort((a, b) => a[0] - b[0]);
-    let best = null;
+    const gaps = [];
     let cursor = 16;
     for (const [top, bottom] of [...blocks, [box.height - 16, box.height]]) {
-      if (top - cursor > (best ? best.h : 0)) best = { y: cursor, h: top - cursor };
+      if (top - cursor >= size + 40) gaps.push({ y: cursor + 8, h: top - cursor - size - 16, w: box.width });
       cursor = Math.max(cursor, bottom);
     }
-    return best && best.h >= size + 40 ? { y: best.y + 8, h: best.h - size - 16, w: box.width } : null;
+    return gaps.length ? gaps[Math.floor(Math.random() * gaps.length)] : null;
   }
 
-  function flyby(forcedPath) {
-    const busy = isAnalysing || document.hidden || reduceMotion.matches || flyLayer.children.length || document.querySelector("dialog[open]");
-    if (busy) return forcedPath ? null : scheduleFlyby(); // the same rules apply to the demo hook
-    const size = isPhone.matches ? 22 : 30;
+  // Launch one Scout on a path at a depth. Far Scouts fly BEHIND the planets.
+  function launch(path, depth = "mid") {
+    const size = Math.round(DEPTH_SIZE[depth] * (isPhone.matches ? 0.8 : 1));
     const band = findEmptyBand(size);
-    if (!band) return scheduleFlyby(); // no room: skip this time
-
-    flyCount++;
-    const path = forcedPath || (flyCount % 6 === 0 ? "special" : Math.random() < 0.12 ? "peek" : FLY_PATHS[Math.floor(Math.random() * FLY_PATHS.length)]);
-    flyLayer.replaceChildren(); // never more than one Mini Scout
-
-    const bot = el("div", `mini-scout path-${path}`);
+    if (!band) return null; // no empty space: skip
+    const bot = el("div", `mini-scout path-${path} depth-${depth}`);
     bot.style.setProperty("--fly-y", `${band.y}px`);
-    bot.style.setProperty("--fly-h", `${band.h}px`);
+    bot.style.setProperty("--fly-h", `${Math.max(0, band.h)}px`);
     bot.style.setProperty("--fly-w", `${band.w}px`);
     bot.style.setProperty("--mini", `${size}px`);
     const body = el("div", "mini-body");
-    body.appendChild(scoutLogo());
+    body.appendChild(scoutLogo("full"));
     bot.appendChild(body);
     let done = false;
     const finish = () => {
       if (done) return;
       done = true;
       bot.remove();
-      scheduleFlyby();
     };
     bot.addEventListener("animationend", (event) => event.target === bot && finish());
-    setTimeout(finish, 12000); // backup: never let a Mini Scout linger (longest path is 9 s)
-    flyLayer.appendChild(bot);
+    setTimeout(finish, 12000); // backup: never let a Scout linger
+    (depth === "far" ? farScouts : flyLayer).appendChild(bot);
     return path;
   }
 
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      clearTimeout(flyTimer); // nothing runs or piles up while hidden
-      flyLayer.replaceChildren();
-    } else {
-      scheduleFlyby();
+  function scheduleScout(delay) {
+    clearTimeout(flyTimer);
+    if (!spaceOn || reduceMotion.matches) return;
+    flyTimer = setTimeout(spawnScouts, delay ?? 2500 + Math.random() * 5500);
+  }
+
+  // Up to 3 Scouts at once (1 on phones), each with its own path and depth
+  function spawnScouts() {
+    if (!spaceOn || isAnalysing || document.hidden) return;
+    const max = isPhone.matches ? 1 : 3;
+    const live = flyLayer.children.length + farScouts.children.length;
+    if (live < max) {
+      flyCount++;
+      const depth = ["far", "far", "mid", "mid", "near"][Math.floor(Math.random() * 5)];
+      if (!isPhone.matches && flyCount % 5 === 0 && live <= max - 2) {
+        launch("across", "mid"); // rare: two Scouts cross paths
+        launch("across-rev", "far");
+      } else if (flyCount % 7 === 0) {
+        launch("special", "mid"); // rare: stops, looks toward the main Scout, antenna wiggle
+      } else if (Math.random() < 0.12) {
+        launch("peek", "near"); // rare: just peeks from the edge
+      } else {
+        launch(FLY_PATHS[Math.floor(Math.random() * FLY_PATHS.length)], depth);
+      }
     }
-  });
-  reduceMotion.addEventListener?.("change", scheduleFlyby);
-  window.scoutFlyby = (path) => flyby(path || FLY_PATHS[0]); // handy for demos: scoutFlyby("loop")
-  scheduleFlyby();
+    scheduleScout();
+  }
+
+  // Handy for demos/testing: scoutSpace(true) turns space on; scoutFlyby("loop", "near")
+  window.scoutSpace = (on = true) => (on ? enterSpace() : exitSpace());
+  window.scoutFlyby = (path = "across", depth = "mid") => (isAnalysing ? null : launch(path, depth));
 
   updateSendButton();
   updateClearButton();
