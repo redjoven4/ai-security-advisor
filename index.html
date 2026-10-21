@@ -133,12 +133,10 @@
         <span class="switch" aria-hidden="true"></span>
       </label>
 
-      <button id="showExamples" class="sidebar-option">
-        <span aria-hidden="true">🧪</span> Example cases
-      </button>
+      <button id="showExamples" class="sidebar-option">Try a scenario</button>
 
       <button id="clearConversation" class="sidebar-option">
-        <span aria-hidden="true">🗑</span> Clear conversation
+        Clear conversation
       </button>
 
       <div class="version">
@@ -243,30 +241,10 @@
 
       <!-- Only shown in the empty state, under the compact composer -->
       <div id="emptyExtras" class="empty-extras">
-        <!-- These only FILL the composer; the adviser still analyses normally -->
-        <div class="suggestions">
-          <button data-example="7">
-            <span class="suggestion-icon" aria-hidden="true">🎮</span>
-            <div>
-              <strong>Gaming account message</strong>
-              <small>An account warning with a link</small>
-            </div>
-          </button>
-          <button data-example="3">
-            <span class="suggestion-icon" aria-hidden="true">♟</span>
-            <div>
-              <strong>Chess/club invitation</strong>
-              <small>A club update with a deadline</small>
-            </div>
-          </button>
-          <button data-example="0">
-            <span class="suggestion-icon" aria-hidden="true">💬</span>
-            <div>
-              <strong>Everyday message</strong>
-              <small>A normal message from a friend</small>
-            </div>
-          </button>
-        </div>
+        <!-- Opens the same "Try a scenario" panel as the sidebar -->
+        <p class="scenario-hint">
+          Not sure what to try? <button type="button" id="openScenarios" class="scenario-link">Pick a realistic scenario</button>
+        </p>
 
         <p class="limitations">
           I only judge the words you give me. I can't verify who sent a message, open or inspect links,
@@ -284,15 +262,15 @@
 
 
 <!-- =========================
-     EXAMPLE CASES DIALOG
+     TRY A SCENARIO PANEL
 ========================== -->
 <dialog id="examplesDialog" class="examples-dialog" aria-labelledby="examplesTitle">
   <div class="dialog-header">
     <div>
-      <h3 id="examplesTitle">Example test cases</h3>
-      <p>Fictional messages. Choosing one only fills the composer — the adviser still analyses it normally.</p>
+      <h3 id="examplesTitle">Try a scenario</h3>
+      <p>Choose a message to see how Scout handles it.</p>
     </div>
-    <button type="button" id="closeExamples" class="icon-button" aria-label="Close examples">×</button>
+    <button type="button" id="closeExamples" class="icon-button" aria-label="Close">×</button>
   </div>
   <div id="examplesList" class="examples-list"></div>
 </dialog>
